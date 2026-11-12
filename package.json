@@ -1,0 +1,30 @@
+{
+  "name": "guardian",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Nierwall: a private DeFi assistant for your Mac, built for the NEAR HACKATHON",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ConduenceAi/Nierwall.git"
+  },
+  "packageManager": "pnpm@10.23.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "brain": "pnpm --filter @guardian/brain start",
+    "dev": "pnpm --filter @guardian/brain dev",
+    "demo": "pnpm --filter @guardian/brain demo",
+    "simulate": "pnpm --filter @guardian/brain simulate",
+    "test": "pnpm -r --if-present test",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "build": "pnpm -r --if-present build",
+    "memory": "cd services/memory && .venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 7421",
+    "memory:setup": "cd services/memory && /opt/homebrew/bin/python3.14 -m venv .venv && .venv/bin/pip install -r requirements.txt",
+    "mac": "sh apps/mac/scripts/bundle.sh && open apps/mac/build/Nierwall.app",
+    "snap": "pnpm --filter @guardian/snap build && pnpm --filter @guardian/snap serve",
+    "sign:build": "pnpm --filter @guardian/sign build",
+    "always-on": "sh ops/install-always-on.sh"
+  }
+}

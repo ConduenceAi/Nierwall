@@ -1,0 +1,18 @@
+{
+  "wallets": [
+    {
+      "label": "Cash",
+      "chain": "base",
+      "address": "0x0000000000000000000000000000000000000000",
+      "role": "everyday cash, fixes may draw from it"
+    },
+    {
+      "label": "NEAR wallet",
+      "chain": "near",
+      "address": "example.near",
+      "role": "long-term holdings, use only to avoid liquidation"
+    }
+  ],
+  "watchAave": ["Cash"],
+  "watchRhea": ["NEAR wallet"]
+}
