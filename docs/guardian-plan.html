@@ -1,0 +1,1578 @@
+<title>Nierwall plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+:root{
+  --bg:#F2F4F7; --surface:#FFFFFF; --surface-2:#E8ECF2;
+  --ink:#101828; --ink-2:#384457; --muted:#657287;
+  --rule:#D7DDE6; --rule-strong:#B6C0CE;
+  --accent:#2446D8; --accent-soft:#E3E8FC; --accent-ink:#FFFFFF;
+  --near:#007A5E; --near-soft:#DAF4EA;
+  --plum:#8A3CA2; --plum-soft:#F3E5F7;
+  --out:#5D6777; --out-soft:#EBEEF2;
+  --ok:#2E7D32; --ok-soft:#E1F1E1;
+  --warn:#A86400; --warn-soft:#FAEDD6;
+  --crit:#BE2F3A; --crit-soft:#FAE1E3;
+  --desk-a:#D6DFEE; --desk-b:#EEF2F7;
+  --panel:rgba(255,255,255,.93); --menubar:rgba(246,248,251,.94);
+  --shadow:0 1px 2px rgba(16,24,40,.05),0 6px 20px rgba(16,24,40,.06);
+  --shadow-panel:0 18px 40px rgba(16,24,40,.18),0 2px 6px rgba(16,24,40,.08);
+  --font-display:"Bricolage Grotesque","Avenir Next","Segoe UI",system-ui,sans-serif;
+  --font-body:"IBM Plex Sans","Helvetica Neue",Arial,system-ui,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#0B1019; --surface:#121927; --surface-2:#1A2333;
+    --ink:#E8EDF5; --ink-2:#B8C2D2; --muted:#8794A9;
+    --rule:#243046; --rule-strong:#34425C;
+    --accent:#8099FF; --accent-soft:#1B2550; --accent-ink:#0B1019;
+    --near:#3DDCA4; --near-soft:#0D2B22;
+    --plum:#CC8FE6; --plum-soft:#2C1A35;
+    --out:#9BA4B4; --out-soft:#1A2130;
+    --ok:#6FCF73; --ok-soft:#16301A;
+    --warn:#EBA544; --warn-soft:#33240E;
+    --crit:#F06A75; --crit-soft:#3A1519;
+    --desk-a:#111A2B; --desk-b:#1B2740;
+    --panel:rgba(22,30,46,.94); --menubar:rgba(20,27,41,.94);
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 20px rgba(0,0,0,.25);
+    --shadow-panel:0 18px 40px rgba(0,0,0,.55),0 2px 6px rgba(0,0,0,.3);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0B1019; --surface:#121927; --surface-2:#1A2333;
+  --ink:#E8EDF5; --ink-2:#B8C2D2; --muted:#8794A9;
+  --rule:#243046; --rule-strong:#34425C;
+  --accent:#8099FF; --accent-soft:#1B2550; --accent-ink:#0B1019;
+  --near:#3DDCA4; --near-soft:#0D2B22;
+  --plum:#CC8FE6; --plum-soft:#2C1A35;
+  --out:#9BA4B4; --out-soft:#1A2130;
+  --ok:#6FCF73; --ok-soft:#16301A;
+  --warn:#EBA544; --warn-soft:#33240E;
+  --crit:#F06A75; --crit-soft:#3A1519;
+  --desk-a:#111A2B; --desk-b:#1B2740;
+  --panel:rgba(22,30,46,.94); --menubar:rgba(20,27,41,.94);
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 20px rgba(0,0,0,.25);
+  --shadow-panel:0 18px 40px rgba(0,0,0,.55),0 2px 6px rgba(0,0,0,.3);
+}
+
+*,*::before,*::after{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased}
+a{color:var(--accent);text-underline-offset:3px}
+a:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
+p{margin:0 0 14px;max-width:68ch}
+ul,ol{margin:0}
+strong{font-weight:600}
+code{font-family:var(--font-mono);font-size:.86em;background:var(--surface-2);padding:1px 6px;border-radius:5px}
+kbd{font-family:var(--font-mono);font-size:11px;border:1px solid var(--rule-strong);border-bottom-width:2px;border-radius:5px;padding:0 5px;background:var(--surface);color:var(--ink)}
+.wrap{max-width:1200px;margin:0 auto;padding-inline:20px}
+
+/* ---------- hero ---------- */
+.hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:48px;align-items:center;padding-block:44px 52px}
+@media (max-width:960px){.hero{grid-template-columns:minmax(0,1fr);gap:32px}}
+.eyebrow{font-family:var(--font-mono);font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:0}
+.hero h1{font-family:var(--font-display);font-weight:760;font-size:clamp(48px,7vw,84px);line-height:.95;letter-spacing:-.025em;margin:14px 0 18px}
+.hero-sub{font-size:clamp(18px,1.7vw,21px);line-height:1.5;color:var(--ink-2);max-width:32em;margin:0 0 24px}
+.hero-tags{list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:8px}
+.hero-tags li{font-family:var(--font-mono);font-size:12px;padding:5px 11px;border:1px solid var(--rule-strong);border-radius:999px;color:var(--ink-2);background:var(--surface)}
+.hero-tags li.hk-tag{border-color:var(--near);color:var(--near);background:var(--near-soft)}
+
+/* mac mock */
+.mac{margin:0;border-radius:16px;overflow:hidden;border:1px solid var(--rule);box-shadow:var(--shadow);background:linear-gradient(155deg,var(--desk-a),var(--desk-b) 70%)}
+.menubar{display:flex;justify-content:space-between;align-items:center;gap:12px;height:30px;padding-inline:14px;background:var(--menubar);border-bottom:1px solid var(--rule);font-size:12.5px;color:var(--ink)}
+.mb-left{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.mb-left b{font-weight:600;margin-right:12px}
+.mb-left span{margin-right:12px;color:var(--ink-2)}
+.mb-right{display:flex;align-items:center;gap:12px;white-space:nowrap;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.mb-right svg{display:block}
+.mb-guard{display:grid;place-items:center;width:28px;height:22px;border-radius:6px;background:var(--accent-soft);color:var(--accent);outline:1.5px solid var(--accent);outline-offset:-1.5px}
+.desk{padding:12px 12px 20px}
+.panel{margin-left:auto;width:min(100%,372px);background:var(--panel);border:1px solid var(--rule);border-radius:16px;padding:14px;box-shadow:var(--shadow-panel);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+.heard{display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--ink-2);font-style:italic;margin-bottom:10px}
+.orb{flex:none;width:22px;height:22px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#fff 0 12%,var(--accent) 45%,var(--near) 100%);box-shadow:0 0 0 4px var(--accent-soft);animation:breathe 3.2s ease-in-out infinite}
+@keyframes breathe{50%{box-shadow:0 0 0 7px var(--accent-soft)}}
+@media (prefers-reduced-motion:reduce){.orb{animation:none}}
+.reply{font-size:14px;line-height:1.55;margin:0 0 12px;color:var(--ink)}
+.poscard{border:1px solid var(--rule);border-radius:12px;padding:11px 12px 10px;background:var(--surface)}
+.pc-top{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--muted)}
+.pc-name{color:var(--ink);font-weight:500}
+.pc-fresh{font-family:var(--font-mono);font-size:11px;color:var(--ok)}
+.pc-main{display:flex;align-items:baseline;gap:8px;margin:2px 0 8px}
+.pc-hf{font-family:var(--font-display);font-size:28px;font-weight:700;font-variant-numeric:tabular-nums}
+.pc-hf-label{font-size:12px;color:var(--muted)}
+.gauge{position:relative;height:8px;border-radius:4px;background:linear-gradient(90deg,var(--crit) 0%,var(--warn) 22%,var(--warn) 50%,var(--ok) 50%,var(--ok) 100%)}
+.g-floor{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--ink);left:50%;transform:translateX(-1px)}
+.g-mark{position:absolute;top:50%;width:14px;height:14px;border-radius:50%;background:var(--surface);border:3px solid var(--ink);left:62%;transform:translate(-50%,-50%)}
+.g-scale{position:relative;height:16px;margin-top:6px;font-family:var(--font-mono);font-size:10.5px;color:var(--muted)}
+.g-scale span{position:absolute;top:0;white-space:nowrap}
+.g-scale .s0{left:0}.g-scale .s50{left:50%;transform:translateX(-50%);color:var(--ink)}.g-scale .s100{right:0}
+.panel-foot{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--rule);font-size:12px;color:var(--muted)}
+.att{font-family:var(--font-mono);font-size:10.5px;color:var(--near);border:1px solid var(--near);border-radius:999px;padding:1px 8px;white-space:nowrap}
+.mac figcaption{font-size:12px;color:var(--muted);padding:0 14px 12px;text-align:right}
+
+/* ---------- layout ---------- */
+.layout{display:grid;grid-template-columns:184px minmax(0,1fr);gap:56px;align-items:start}
+@media (max-width:1040px){.layout{grid-template-columns:minmax(0,1fr)}.toc{display:none}}
+.toc{position:sticky;top:calc(env(safe-area-inset-top,0px) + 20px);padding-top:10px;font-size:14px}
+.toc p{margin:0 0 10px}
+.toc ol{list-style:none;padding:0;display:grid;gap:1px;border-left:1px solid var(--rule)}
+.toc a{display:block;padding:5px 0 5px 14px;margin-left:-1px;border-left:2px solid transparent;color:var(--muted);text-decoration:none;line-height:1.35}
+.toc a:hover{color:var(--ink)}
+.toc a.active{color:var(--ink);border-left-color:var(--accent);font-weight:500}
+.toc-m{display:none;margin:0 0 28px;background:var(--surface);border:1px solid var(--rule);border-radius:12px;padding:10px 16px}
+.toc-m summary{cursor:pointer;font-weight:500}
+.toc-m ol{padding-left:20px;margin-top:8px;columns:2;column-gap:28px;font-size:15px}
+.toc-m li{padding-block:3px;break-inside:avoid}
+@media (max-width:1040px){.toc-m{display:block}}
+@media (max-width:520px){.toc-m ol{columns:1}}
+main{min-width:0;padding-bottom:40px}
+main>section{padding-block:56px 12px;border-top:1px solid var(--rule)}
+main>section.first{border-top:0;padding-top:0}
+h2{font-family:var(--font-display);font-weight:720;font-size:clamp(30px,3.6vw,42px);line-height:1.08;letter-spacing:-.018em;margin:10px 0 14px;text-wrap:balance}
+h3{font-family:var(--font-display);font-weight:660;font-size:20px;line-height:1.25;margin:0 0 8px;text-wrap:balance}
+h4{font-size:15px;font-weight:600;margin:0 0 6px;line-height:1.35}
+.lede{font-size:18.5px;line-height:1.55;color:var(--ink-2);max-width:62ch;margin:0 0 30px}
+.small{font-size:14px;color:var(--muted)}
+.sub-h{margin:44px 0 14px}
+.sub-h h3{font-size:22px;margin:6px 0 6px}
+.sub-h p{color:var(--ink-2);margin:0}
+
+/* chips and tags */
+.chip{display:inline-flex;align-items:center;font-family:var(--font-mono);font-size:11px;letter-spacing:.03em;padding:1px 7px;border-radius:999px;border:1px solid currentColor;line-height:1.5;white-space:nowrap}
+.c-you{color:var(--plum)}.c-mac{color:var(--accent)}.c-brain{color:var(--accent);border-style:dashed}.c-near{color:var(--near)}.c-out{color:var(--out)}.c-wallet{color:var(--ink-2)}
+.tag{display:inline-block;font-family:var(--font-mono);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;padding:2px 7px;border-radius:5px;margin-right:8px;vertical-align:1px}
+.t-new{background:var(--accent-soft);color:var(--accent)}
+.t-near{background:var(--near-soft);color:var(--near)}
+.t-chg{background:var(--plum-soft);color:var(--plum)}
+.t-keep{background:var(--surface);color:var(--ink-2);border:1px solid var(--rule-strong)}
+
+/* ---------- hackathon band ---------- */
+.hk{background:var(--near-soft);border:1.5px solid var(--near);border-radius:18px;padding:26px 26px 22px}
+.hk h2{margin-top:6px}
+.hk .eyebrow{color:var(--near)}
+.hk-facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;border:1px solid var(--rule);border-radius:12px;background:var(--surface);margin:6px 0 22px;overflow:hidden}
+.hk-facts div{padding:12px 14px;border-left:1px solid var(--rule)}
+.hk-facts div:first-child{border-left:0}
+.hk-facts dt{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
+.hk-facts dd{margin:0;font-weight:600;font-size:15px;line-height:1.35;font-variant-numeric:tabular-nums}
+.hk-facts .wide{grid-column:span 1}
+@media (max-width:860px){.hk-facts{grid-template-columns:repeat(2,minmax(0,1fr))}.hk-facts div:nth-child(3){border-left:0}.hk-facts div:nth-child(n+3){border-top:1px solid var(--rule)}}
+@media (max-width:440px){.hk-facts{grid-template-columns:minmax(0,1fr)}.hk-facts div{border-left:0!important}.hk-facts div+div{border-top:1px solid var(--rule)}}
+.beats{list-style:none;padding:0;counter-reset:b;display:grid;gap:10px}
+.beats li{counter-increment:b;display:grid;grid-template-columns:30px minmax(0,1fr);gap:12px;font-size:15px;color:var(--ink-2);line-height:1.5}
+.beats li::before{content:counter(b);display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--near);color:var(--surface);font-family:var(--font-mono);font-size:12.5px;font-weight:500}
+.beats b{color:var(--ink);font-weight:600}
+.hk-note{margin:18px 0 0;font-size:14px;color:var(--ink-2);max-width:none}
+
+/* ---------- idea ---------- */
+.jobs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:640px){.jobs{grid-template-columns:minmax(0,1fr)}}
+.job{background:var(--surface);border:1px solid var(--rule);border-radius:14px;padding:20px}
+.job p{margin:0;color:var(--ink-2);font-size:15.5px}
+.job-tag{display:block;font-family:var(--font-mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px}
+.j-money .job-tag{color:var(--accent)}.j-you .job-tag{color:var(--plum)}.j-watch .job-tag{color:var(--ink)}.j-fix .job-tag{color:var(--near)}
+.never{margin-top:28px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--rule);border-radius:14px;overflow:hidden;background:var(--surface)}
+.never div{padding:16px 18px;border-left:1px solid var(--rule)}
+.never div:first-child{border-left:0}
+.never b{display:block;font-family:var(--font-display);font-weight:680;font-size:17px;margin-bottom:4px;color:var(--crit)}
+.never span{font-size:14.5px;color:var(--ink-2);line-height:1.45;display:block}
+@media (max-width:860px){.never{grid-template-columns:repeat(2,minmax(0,1fr))}.never div:nth-child(3){border-left:0}.never div:nth-child(n+3){border-top:1px solid var(--rule)}}
+@media (max-width:480px){.never{grid-template-columns:minmax(0,1fr)}.never div{border-left:0!important}.never div+div{border-top:1px solid var(--rule)}}
+.watchlist{margin-top:28px;padding:22px 24px;border-radius:14px;border:1.5px solid var(--accent);background:var(--surface)}
+.watchlist h3{margin-bottom:12px}
+.watchlist ul{list-style:none;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 24px}
+@media (max-width:700px){.watchlist ul{grid-template-columns:minmax(0,1fr)}}
+.watchlist li{font-size:15px;color:var(--ink-2);line-height:1.5}
+.watchlist li b{color:var(--ink);font-weight:600}
+.watchlist .ex{margin:16px 0 0;padding-top:14px;border-top:1px dashed var(--rule);font-size:15px;color:var(--ink-2);max-width:none}
+.watchlist .ex b{color:var(--ink);font-weight:600}
+.changes{margin-top:28px;padding:22px 24px;border-radius:14px;background:var(--surface-2)}
+.changes h3{margin-bottom:12px}
+.changes ul{list-style:none;padding:0;display:grid;gap:10px}
+.changes li{font-size:15.5px;line-height:1.5}
+.changes .more{display:inline-block;margin-top:14px;font-size:14.5px}
+
+/* ---------- NEAR fit ---------- */
+.nears{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:760px){.nears{grid-template-columns:minmax(0,1fr)}}
+.nc{background:var(--surface);border:1px solid var(--rule);border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:8px}
+.nc-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.nc-top h3{margin:0;color:var(--near)}
+.nc-role{font-family:var(--font-mono);font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.nc p{margin:0;font-size:15px;color:var(--ink-2)}
+.nc .tracks{display:flex;flex-wrap:wrap;gap:6px;margin-top:auto;padding-top:6px}
+.notes{margin-top:14px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:760px){.notes{grid-template-columns:minmax(0,1fr)}}
+.notes div{padding:14px 18px;border:1px dashed var(--rule-strong);border-radius:14px;font-size:14.5px;color:var(--ink-2)}
+.notes b{color:var(--ink)}
+
+/* ---------- figures ---------- */
+figure{margin:0}
+.fig{background:var(--surface);border:1px solid var(--rule);border-radius:16px;padding:18px}
+.fig-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.fig figcaption{font-size:13.5px;color:var(--muted);margin-top:10px}
+.scroll-hint{display:none;font-size:12.5px;color:var(--muted);margin:0 0 8px}
+@media (max-width:760px){.scroll-hint{display:block}}
+
+/* system map */
+.sysmap{display:block;width:100%;min-width:880px;height:auto;font-family:var(--font-body)}
+.zone{stroke-width:1.2}
+.zone-mac{fill:var(--accent-soft);stroke:var(--accent);stroke-opacity:.45}
+.zone-out{fill:var(--out-soft);stroke:var(--out);stroke-opacity:.4}
+.subzone{fill:none;stroke:var(--accent);stroke-opacity:.6;stroke-dasharray:6 5;stroke-width:1.2}
+.zl{font-family:var(--font-mono);font-size:11px;letter-spacing:.09em;font-weight:500}
+.zl-mac,.szl{fill:var(--accent)}.zl-out{fill:var(--out)}
+.szl{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.08em}
+.nd{fill:var(--surface);stroke-width:1.3}
+.nd-mac{stroke:var(--accent)}
+.nd-near{fill:var(--near-soft);stroke:var(--near);stroke-width:1.6}
+.nd-out{stroke:var(--out)}
+.nt{font-family:var(--font-display);font-weight:660;font-size:15px;fill:var(--ink)}
+.nt-s{font-size:14px}
+.ns{font-size:12px;fill:var(--muted)}
+.nd-near+.nt,.ntag{fill:var(--near)}
+.ntag{font-family:var(--font-mono);font-size:10px;letter-spacing:.09em;font-weight:500}
+.nl text{font-size:12.5px;fill:var(--ink-2)}
+.nl circle{fill:var(--accent)}
+.ed{fill:none;stroke:var(--ink-2);stroke-width:1.4}
+.ed-sec{fill:none;stroke:var(--near);stroke-width:3}
+.arr-head{fill:var(--ink-2)}
+.arr-head-sec{fill:var(--near)}
+.el{font-family:var(--font-mono);font-size:10.5px;fill:var(--ink-2);paint-order:stroke;stroke:var(--surface);stroke-width:4px;stroke-linejoin:round}
+.el-sec{fill:var(--near);font-weight:500}
+.glyph line{stroke:var(--accent);stroke-width:1.3;stroke-opacity:.65}
+.glyph circle{fill:var(--surface);stroke:var(--accent);stroke-width:1.6}
+.glyph circle.hot{fill:var(--accent)}
+.lg-near{fill:var(--near-soft);stroke:var(--near);stroke-width:1.4}
+.lg-out{fill:var(--surface);stroke:var(--out);stroke-width:1.3}
+.lg-t{font-size:12px;fill:var(--ink-2)}
+.bar{fill:var(--surface-2);stroke:var(--rule-strong)}
+.bar-note{font-family:var(--font-mono);font-size:11.5px;fill:var(--ink)}
+
+.parts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:18px;align-items:start}
+@media (max-width:860px){.parts{grid-template-columns:minmax(0,1fr)}}
+.part{background:var(--surface);border:1px solid var(--rule);border-radius:14px;padding:16px 18px}
+.part h4{font-family:var(--font-mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:500;margin-bottom:10px}
+.p-mac h4{color:var(--accent)}.p-near h4{color:var(--near)}.p-out h4{color:var(--out)}
+.part dl{margin:0;display:grid;gap:9px}
+.part dt{font-weight:600;font-size:14.5px}
+.part dd{margin:0;font-size:14px;color:var(--ink-2);line-height:1.45}
+.wiring{margin-top:18px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:700px){.wiring{grid-template-columns:minmax(0,1fr)}}
+.wiring div{padding:16px 18px;border:1px dashed var(--rule-strong);border-radius:14px}
+.wiring b{display:block;font-family:var(--font-display);font-weight:660;font-size:17px;margin-bottom:4px}
+.wiring span{font-size:14.5px;color:var(--ink-2)}
+
+/* ---------- day timeline ---------- */
+.day{border-top:1px solid var(--rule)}
+.beat{display:grid;grid-template-columns:72px minmax(0,1fr);gap:20px;padding-block:22px;border-bottom:1px solid var(--rule)}
+@media (max-width:560px){.beat{grid-template-columns:minmax(0,1fr);gap:6px}}
+.beat-time{font-family:var(--font-mono);font-size:16px;font-weight:500;font-variant-numeric:tabular-nums;padding-top:2px}
+.beat-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:6px}
+.beat-head h3{margin:0;font-size:19px}
+.beat p{margin:0 0 6px;color:var(--ink-2)}
+.beat .q{font-style:italic;color:var(--ink)}
+.beat-body{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,350px);gap:22px;align-items:start}
+@media (max-width:860px){.beat-body{grid-template-columns:minmax(0,1fr)}}
+
+.tg{background:var(--surface);border:1px solid var(--rule);border-radius:14px;padding:12px 14px;font-size:13.5px;line-height:1.5;box-shadow:var(--shadow)}
+.tg-head{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);margin-bottom:8px}
+.tg-av{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font-weight:600;font-size:12px}
+.tg-head b{color:var(--ink);font-weight:600}
+.tg-head .t{margin-left:auto;font-family:var(--font-mono);font-size:11px}
+.tg p{margin:0 0 8px;color:var(--ink)}
+.tg .note{font-size:12px;color:var(--muted)}
+.tg-btns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:4px}
+.tg-btns span{text-align:center;font-size:12.5px;font-weight:500;padding:6px;border-radius:8px;background:var(--surface-2);color:var(--accent)}
+.review{background:var(--surface);border:1px solid var(--rule);border-radius:14px;padding:14px;box-shadow:var(--shadow);font-size:13.5px}
+.rv-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:10px}
+.rv-head b{font-family:var(--font-display);font-size:16px;font-weight:660}
+.rv-head span{font-family:var(--font-mono);font-size:10.5px;color:var(--ok)}
+.review dl{margin:0;display:grid;gap:7px}
+.review dl div{display:grid;grid-template-columns:96px minmax(0,1fr);gap:10px}
+.review dt{color:var(--muted)}
+.review dd{margin:0;font-variant-numeric:tabular-nums;line-height:1.45}
+.review .was{display:block;font-size:12px;color:var(--muted)}
+.review .priv dd{color:var(--warn)}
+.rv-actions{display:flex;gap:8px;margin-top:12px}
+.btn{font-size:13px;font-weight:500;padding:7px 12px;border-radius:9px;border:1px solid var(--rule-strong);color:var(--ink);white-space:nowrap}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+
+.flows{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:820px){.flows{grid-template-columns:minmax(0,1fr)}}
+.flow{background:var(--surface);border:1px solid var(--rule);border-radius:14px;padding:18px 18px 8px}
+.flow h3{font-size:18px;margin-bottom:12px}
+.flow ol{list-style:none;padding:0;counter-reset:st}
+.flow li{counter-increment:st;display:grid;grid-template-columns:24px minmax(0,1fr);gap:10px;padding-block:9px;border-top:1px solid var(--rule);font-size:14.5px;line-height:1.5;color:var(--ink-2)}
+.flow li::before{content:counter(st);font-family:var(--font-mono);font-size:12px;color:var(--muted);padding-top:2px}
+.flow .who{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:3px}
+
+/* ---------- memory ---------- */
+.compare{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:760px){.compare{grid-template-columns:minmax(0,1fr)}}
+.cmp{border-radius:14px;padding:20px}
+.cmp-old{border:1px dashed var(--rule-strong)}
+.cmp-new{background:var(--surface);border:1.5px solid var(--plum)}
+.cmp h3{margin:6px 0 12px}
+.cmp ol{padding-left:20px;display:grid;gap:6px;font-size:15px;margin-bottom:12px}
+.cmp-old ol,.cmp-old h3{color:var(--ink-2)}
+.cmp .small{margin:0}
+.layers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:start}
+@media (max-width:820px){.layers{grid-template-columns:minmax(0,1fr)}}
+.layer{background:var(--surface);border:1px solid var(--rule);border-radius:14px;padding:18px}
+.layer h4{font-family:var(--font-display);font-size:17px;font-weight:660}
+.layer ul{padding-left:18px;display:grid;gap:5px;font-size:14.5px;color:var(--ink-2)}
+.l-you h4{color:var(--plum)}.l-money h4{color:var(--accent)}.l-hist h4{color:var(--out)}
+.keepout{margin-top:14px;padding:16px 20px;border-radius:14px;background:var(--surface-2);font-size:14.5px}
+.keepout ul{padding-left:18px;display:grid;gap:4px;margin-top:6px;color:var(--ink-2)}
+.keepout b{color:var(--ink)}
+
+.mgraph{display:block;width:100%;min-width:720px;height:auto;font-family:var(--font-body)}
+.ge{stroke:var(--rule-strong);stroke-width:1.6;fill:none}
+.ge-hot{stroke:var(--accent);stroke-width:2.2}
+.ge-ended{stroke:var(--muted);stroke-dasharray:5 5}
+.gl{font-family:var(--font-mono);font-size:10.5px;fill:var(--ink-2);paint-order:stroke;stroke:var(--surface);stroke-width:5px;stroke-linejoin:round}
+.gl-hot{fill:var(--accent);font-weight:500}
+.gl-ended{fill:var(--muted)}
+.gn{stroke-width:1.5}
+.gn-about{fill:var(--plum-soft);stroke:var(--plum)}
+.gn-money{fill:var(--accent-soft);stroke:var(--accent)}
+.gn-hist{fill:var(--out-soft);stroke:var(--out);stroke-dasharray:3 3}
+.gt{font-size:13px;fill:var(--ink);text-anchor:middle}
+.gn-you{fill:var(--ink)}
+.gt-you{font-family:var(--font-display);font-weight:700;font-size:17px;fill:var(--bg);text-anchor:middle}
+.legend{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:12px;font-size:13px;color:var(--ink-2)}
+.legend span{display:inline-flex;align-items:center;gap:7px}
+.sw{width:16px;height:12px;border-radius:6px;border:1.5px solid}
+.sw-about{background:var(--plum-soft);border-color:var(--plum)}
+.sw-money{background:var(--accent-soft);border-color:var(--accent)}
+.sw-hist{background:var(--out-soft);border-color:var(--out);border-style:dashed}
+.sw-hot{width:22px;height:0;border:0;border-top:2.5px solid var(--accent);border-radius:0}
+.sw-ended{width:22px;height:0;border:0;border-top:2px dashed var(--muted);border-radius:0}
+
+.steps{list-style:none;padding:0;counter-reset:s}
+.steps>li{counter-increment:s;display:grid;grid-template-columns:44px minmax(0,1fr);gap:14px;position:relative;padding-bottom:22px}
+.steps>li::before{content:counter(s);display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--surface);border:1.5px solid var(--plum);color:var(--plum);font-family:var(--font-mono);font-size:13px;font-weight:500;position:relative;z-index:1}
+.steps>li::after{content:"";position:absolute;left:14px;top:30px;bottom:0;width:2px;background:var(--rule)}
+.steps>li:last-child::after{display:none}
+.steps>li:last-child{padding-bottom:0}
+.steps h4{margin:4px 0 6px}
+.steps p{margin:0;color:var(--ink-2);font-size:15px}
+.say{font-style:italic;color:var(--ink)!important}
+.fact{display:block;font-family:var(--font-mono);font-size:12.5px;line-height:1.6;background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:10px 12px;color:var(--ink);overflow-x:auto;white-space:pre}
+.fact .dim{color:var(--muted)}
+.confirm{display:flex;flex-wrap:wrap;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--rule);border-radius:12px;padding:10px 12px;font-size:14px;max-width:560px}
+.confirm span:first-child{flex:1 1 240px}
+
+.split{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:760px){.split{grid-template-columns:minmax(0,1fr)}}
+.split>div{border-radius:14px;padding:18px 20px}
+.s-graph{background:var(--plum-soft)}
+.s-code{background:var(--surface-2)}
+.s-graph h4{color:var(--plum)}
+.split ul{padding-left:18px;display:grid;gap:5px;font-size:14.5px;color:var(--ink-2)}
+
+.timebox{display:grid;grid-template-columns:minmax(0,1.1fr) 28px minmax(0,1.2fr) 28px minmax(0,1fr);align-items:stretch;gap:10px}
+.timebox>div{background:var(--surface);border:1px solid var(--rule);border-radius:12px;padding:14px;font-size:14.5px}
+.timebox>div.arrow{display:grid;place-items:center;color:var(--muted);font-size:18px;border:0;background:none;padding:0}
+@media (max-width:820px){.timebox{grid-template-columns:minmax(0,1fr)}.timebox>div.arrow{transform:rotate(90deg)}}
+.timebox h4{font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:500}
+
+.hygiene{list-style:none;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 24px}
+@media (max-width:760px){.hygiene{grid-template-columns:minmax(0,1fr)}}
+.hygiene li{font-size:15px;color:var(--ink-2);padding-left:18px;position:relative}
+.hygiene li::before{content:"";position:absolute;left:0;top:.6em;width:7px;height:7px;border-radius:2px;background:var(--plum)}
+.hygiene b{color:var(--ink);font-weight:600}
+
+.choice{border:1.5px solid var(--ink);border-radius:16px;overflow:hidden;background:var(--surface)}
+.choice-q{padding:16px 20px;border-bottom:1px solid var(--rule)}
+.choice-q h3{margin:6px 0 4px}
+.choice-q p.why{margin:0;font-size:14.5px;color:var(--ink-2)}
+.opts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (max-width:760px){.opts{grid-template-columns:minmax(0,1fr)}}
+.opt{padding:18px 20px}
+.opt+.opt{border-left:1px solid var(--rule)}
+@media (max-width:760px){.opt+.opt{border-left:0;border-top:1px solid var(--rule)}}
+.opt h4{font-family:var(--font-display);font-size:17px;font-weight:660;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.opt p{font-size:14.5px;color:var(--ink-2);margin:0 0 8px}
+.opt ul{padding-left:18px;font-size:14px;color:var(--ink-2);display:grid;gap:3px}
+.rec{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;padding:2px 7px;border-radius:5px;background:var(--ok-soft);color:var(--ok);font-weight:500}
+.notused{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;padding:2px 7px;border-radius:5px;background:var(--surface-2);color:var(--muted);font-weight:500}
+.choice-src{font-size:12.5px;color:var(--muted);padding:10px 20px 12px;border-top:1px solid var(--rule);margin:0;max-width:none}
+
+/* ---------- talk ---------- */
+.anat{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:760px){.anat{grid-template-columns:minmax(0,1fr)}}
+.anat>div{background:var(--surface);border:1px solid var(--rule);border-radius:14px;padding:18px}
+.anat p{font-size:14.5px;color:var(--ink-2);margin:0}
+.anat p+p{margin-top:8px}
+.states{display:flex;flex-wrap:wrap;gap:18px;margin:4px 0 10px}
+.state{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--ink-2)}
+.state i{position:relative;display:grid;place-items:center;width:30px;height:24px;border-radius:6px;background:var(--surface-2)}
+.state i svg{display:block}
+.st-ok,.st-att{color:var(--ink)}.st-deg{color:var(--muted)}
+.st-att i::after{content:"";position:absolute;top:2px;right:4px;width:7px;height:7px;border-radius:50%;background:var(--warn);box-shadow:0 0 0 1.5px var(--surface-2)}
+.summon{display:grid;gap:8px;margin:4px 0 10px}
+.summon div{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:14.5px;color:var(--ink-2)}
+.summon b{color:var(--ink);font-weight:600;min-width:132px}
+
+.pipe{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border:1px solid var(--rule);border-radius:14px;overflow:hidden;background:var(--surface)}
+.pipe>div{padding:14px 14px 16px;border-left:1px solid var(--rule)}
+.pipe>div:first-child{border-left:0}
+.pipe .where{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px}
+.pipe b{display:block;font-size:14.5px;margin-bottom:3px}
+.pipe span.d{font-size:13.5px;color:var(--ink-2);line-height:1.45;display:block}
+.pipe>div.local{background:var(--accent-soft)}
+@media (max-width:860px){.pipe{grid-template-columns:minmax(0,1fr)}.pipe>div{border-left:0;border-top:1px solid var(--rule)}.pipe>div:first-child{border-top:0}}
+.pipe-cap{font-size:13.5px;color:var(--muted);margin:10px 0 0;max-width:none}
+
+.say-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+@media (max-width:980px){.say-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:520px){.say-grid{grid-template-columns:minmax(0,1fr)}}
+.say-col h4{font-family:var(--font-mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:500;color:var(--muted);margin-bottom:8px}
+.say-col ul{list-style:none;padding:0;display:grid;gap:8px}
+.say-col li{font-size:14px;line-height:1.45;background:var(--surface);border:1px solid var(--rule);border-radius:12px 12px 12px 4px;padding:9px 11px;color:var(--ink)}
+
+.surfaces{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 14px}
+@media (max-width:760px){.surfaces{grid-template-columns:minmax(0,1fr)}}
+.surf{border-top:2px solid var(--ink);padding-top:12px}
+.surf h4{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.surf p{font-size:14.5px;color:var(--ink-2);margin:0}
+.opt-tag{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:400}
+
+/* ---------- tables ---------- */
+.tbl-wrap{overflow-x:auto;border:1px solid var(--rule);border-radius:14px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14px;min-width:660px}
+th,td{text-align:left;vertical-align:top;padding:11px 14px;border-bottom:1px solid var(--rule);line-height:1.45}
+thead th{font-family:var(--font-mono);font-size:11px;letter-spacing:.07em;text-transform:uppercase;font-weight:500;color:var(--muted);background:var(--surface-2)}
+tbody tr:last-child td,tbody tr:last-child th{border-bottom:0}
+tbody th{font-weight:600}
+td.n{color:var(--muted)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:1px}
+.d-y{background:var(--ink)}.d-p{background:var(--warn)}.d-n{background:transparent;border:1.5px solid var(--rule-strong)}
+.tbl-note{font-size:13.5px;color:var(--muted);margin:10px 0 0;max-width:none}
+
+.limits{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 28px;margin-top:20px}
+@media (max-width:760px){.limits{grid-template-columns:minmax(0,1fr)}}
+.limits p{font-size:14.5px;color:var(--ink-2);margin:0}
+.limits b{color:var(--ink)}
+.rails{margin-top:24px;border-radius:16px;background:var(--ink);color:var(--bg);padding:22px 24px}
+.rails h3{color:var(--bg);margin-bottom:12px}
+.rails ol{padding-left:22px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 28px;font-size:15px}
+@media (max-width:700px){.rails ol{grid-template-columns:minmax(0,1fr)}}
+
+/* ---------- build ---------- */
+.ms{list-style:none;padding:0;display:grid;gap:12px}
+.m{display:grid;grid-template-columns:96px minmax(0,1fr);gap:18px;background:var(--surface);border:1px solid var(--rule);border-radius:14px;padding:18px 20px}
+@media (max-width:560px){.m{grid-template-columns:minmax(0,1fr);gap:6px}}
+.m-n{font-family:var(--font-display);font-weight:760;font-size:24px;line-height:1.05}
+.m-n span{display:block;font-family:var(--font-mono);font-size:11.5px;font-weight:500;letter-spacing:.06em;color:var(--muted);margin-top:6px;text-transform:uppercase}
+.m-last .m-n span{color:var(--crit)}
+.m h3{font-size:19px;margin-bottom:8px}
+.m ul{padding-left:18px;display:grid;gap:4px;font-size:14.5px;color:var(--ink-2);margin-bottom:10px}
+.m .done{font-size:14px;color:var(--ink);margin:0;padding-top:8px;border-top:1px dashed var(--rule);max-width:none}
+.m .done b{font-family:var(--font-mono);font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ok);font-weight:500;margin-right:6px}
+.after{margin-top:14px;padding:18px 20px;border-radius:14px;border:1px dashed var(--rule-strong)}
+.after h4{font-family:var(--font-display);font-size:17px;font-weight:660}
+.after ul{padding-left:18px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 24px;font-size:14.5px;color:var(--ink-2)}
+@media (max-width:700px){.after ul{grid-template-columns:minmax(0,1fr)}}
+.after p{font-size:14px;color:var(--muted);margin:10px 0 0;max-width:none}
+
+.ship{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:760px){.ship{grid-template-columns:minmax(0,1fr)}}
+.ship>div{background:var(--surface);border:1px solid var(--rule);border-radius:14px;padding:18px 20px}
+.ship h4{font-family:var(--font-display);font-size:17px;font-weight:660}
+.ship ul{padding-left:18px;display:grid;gap:5px;font-size:14.5px;color:var(--ink-2)}
+.fields{margin-top:14px;padding:18px 20px;border-radius:14px;background:var(--near-soft)}
+.fields h4{color:var(--near)}
+.fields ul{list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:8px}
+.fields li{font-size:13.5px;padding:4px 10px;border-radius:999px;background:var(--surface);border:1px solid var(--rule)}
+.fields p{font-size:14px;color:var(--ink-2);margin:12px 0 0;max-width:none}
+
+/* ---------- decisions ---------- */
+.decided{list-style:none;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 24px;margin-bottom:26px}
+@media (max-width:760px){.decided{grid-template-columns:minmax(0,1fr)}}
+.decided li{display:grid;grid-template-columns:110px minmax(0,1fr);gap:12px;font-size:15px;padding:10px 0;border-bottom:1px solid var(--rule)}
+.decided b{font-family:var(--font-mono);font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ok);font-weight:500;padding-top:3px}
+.dec{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:820px){.dec{grid-template-columns:minmax(0,1fr)}}
+.d{background:var(--surface);border:1px solid var(--rule);border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;gap:8px}
+.d h3{font-size:18px;margin:0}
+.d .pick{font-size:14.5px;color:var(--ink);margin:0}
+.d .pick b{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--ok);background:var(--ok-soft);padding:2px 7px;border-radius:5px;margin-right:6px;font-weight:500}
+.d .alt{font-size:14px;color:var(--ink-2);margin:0}
+
+/* ---------- appendix ---------- */
+.lists{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:14px}
+@media (max-width:760px){.lists{grid-template-columns:minmax(0,1fr)}}
+.lists>div{border-radius:14px;padding:18px 20px;background:var(--surface-2)}
+.lists ul{padding-left:18px;display:grid;gap:4px;font-size:14.5px;color:var(--ink-2)}
+
+.footer{margin-top:40px;padding:26px 24px;border-radius:16px;border:1.5px solid var(--accent);background:var(--accent-soft)}
+.footer h3{margin-bottom:6px}
+.footer p{margin:0;color:var(--ink-2)}
+</style>
+
+<div class="wrap">
+  <header class="hero">
+    <div>
+      <p class="eyebrow">Plan v3 · 12 Nov 2026 · for the NEAR HACKATHON</p>
+      <h1>Nierwall</h1>
+      <p class="hero-sub">A private DeFi assistant that lives in your Mac's menu bar. You talk to it. It remembers what you care about, watches your loans, and brings you fixes that you sign yourself. Its conversations run on NEAR AI Cloud's private TEE models.</p>
+      <ul class="hero-tags">
+        <li class="hk-tag">NEAR HACKATHON build</li>
+        <li>Private AI on NEAR AI Cloud</li>
+        <li>Zep context graph</li>
+        <li>Siri-style menu-bar voice</li>
+      </ul>
+    </div>
+
+    <figure class="mac" aria-label="Illustration of the Nierwall panel opened from the Mac menu bar">
+      <div class="menubar">
+        <div class="mb-left"><b>Finder</b><span>File</span><span>Edit</span><span>View</span><span>Window</span></div>
+        <div class="mb-right">
+          <span class="mb-guard" title="Nierwall">
+            <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 19.5 5.5V11c0 4.9-3.2 8.4-7.5 10-4.3-1.6-7.5-5.1-7.5-10V5.5Z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></svg>
+          </span>
+          <svg width="16" height="12" viewBox="0 0 16 12" aria-hidden="true"><path d="M1 4.2a10 10 0 0 1 14 0M3.4 6.8a6.6 6.6 0 0 1 9.2 0M5.9 9.3a3 3 0 0 1 4.2 0" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <svg width="22" height="11" viewBox="0 0 22 11" aria-hidden="true"><rect x=".75" y=".75" width="18" height="9.5" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.2"/><rect x="2.5" y="2.5" width="12" height="6" rx="1.2" fill="currentColor"/><rect x="20" y="3.5" width="1.5" height="4" rx=".7" fill="currentColor"/></svg>
+          <span>Thu 12 Nov 08:05</span>
+        </div>
+      </div>
+      <div class="desk">
+        <div class="panel">
+          <div class="heard"><span class="orb" aria-hidden="true"></span><span>“Morning. Anything I should know?”</span></div>
+          <p class="reply">All good. Your Rhea loan on NEAR is at <strong>1.62</strong> health and your floor is 1.50, so NEAR would have to fall about 7.4% more to reach it. Aave on Base is at 2.10, and Cash holds 5,500 USDC, above your 3,000 reserve.</p>
+          <div class="poscard">
+            <div class="pc-top"><span class="pc-name">Rhea · NEAR</span><span class="pc-fresh">live · 40 s ago</span></div>
+            <div class="pc-main"><span class="pc-hf">1.62</span><span class="pc-hf-label">health factor</span></div>
+            <div class="gauge" role="img" aria-label="Health factor 1.62 on a scale from 1.00 to 2.00, with your floor at 1.50">
+              <span class="g-floor"></span><span class="g-mark"></span>
+            </div>
+            <div class="g-scale"><span class="s0">1.00 liquidation</span><span class="s50">1.50 your floor</span><span class="s100">2.00</span></div>
+          </div>
+          <div class="panel-foot"><span>Press <kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>Space</kbd> to talk</span><span class="att">NEAR AI · TEE verified</span></div>
+        </div>
+      </div>
+      <figcaption>Illustration. All figures on this page are examples.</figcaption>
+    </figure>
+  </header>
+
+  <div class="layout">
+    <nav class="toc" aria-label="Sections">
+      <p class="eyebrow">On this page</p>
+      <ol>
+        <li><a href="#hackathon">Hackathon</a></li>
+        <li><a href="#idea">The idea</a></li>
+        <li><a href="#near">How NEAR fits</a></li>
+        <li><a href="#map">How it connects</a></li>
+        <li><a href="#day">The full flow</a></li>
+        <li><a href="#memory">Memory (Zep)</a></li>
+        <li><a href="#talk">Talking to it</a></li>
+        <li><a href="#privacy">Who sees what</a></li>
+        <li><a href="#risks">Risks</a></li>
+        <li><a href="#build">Build plan</a></li>
+        <li><a href="#decide">Decisions</a></li>
+        <li><a href="#diff">Codex plan vs this</a></li>
+      </ol>
+    </nav>
+
+    <main>
+      <details class="toc-m">
+        <summary>On this page</summary>
+        <ol>
+          <li><a href="#hackathon">Hackathon</a></li>
+          <li><a href="#idea">The idea</a></li>
+          <li><a href="#near">How NEAR fits</a></li>
+          <li><a href="#map">How it connects</a></li>
+          <li><a href="#day">The full flow</a></li>
+          <li><a href="#memory">Memory (Zep)</a></li>
+          <li><a href="#talk">Talking to it</a></li>
+          <li><a href="#privacy">Who sees what</a></li>
+          <li><a href="#risks">Risks</a></li>
+          <li><a href="#build">Build plan</a></li>
+          <li><a href="#decide">Decisions</a></li>
+          <li><a href="#diff">Codex plan vs this</a></li>
+        </ol>
+      </details>
+
+      <!-- ===================== HACKATHON ===================== -->
+      <section id="hackathon" class="first">
+        <div class="hk">
+          <p class="eyebrow">NEAR HACKATHON</p>
+          <h2>One complete loop by Saturday night</h2>
+          <dl class="hk-facts">
+            <div><dt>Development ends</dt><dd>Sat 14 Nov · 23:59 UTC</dd></div>
+            <div><dt>Judging</dt><dd>from Mon 16 Nov</dd></div>
+            <div><dt>Results</dt><dd>by Wed 18 Nov</dd></div>
+            <div><dt>Tracks</dt><dd>Privacy &amp; Private AI · AI Security &amp; Defense · Open Innovation</dd></div>
+          </dl>
+          <h3>The demo, in five beats</h3>
+          <ol class="beats">
+            <li><div><b>Ask out loud.</b> ⌘⇧Space, “How's my Rhea loan?” A spoken answer and a live card, with a badge showing that a verified TEE model on NEAR AI Cloud wrote it.</div></li>
+            <li><div><b>Teach it.</b> “Ping me if Rhea drops under 1.5.” Nierwall reads the new watch back, and the memory view shows the dated fact.</div></li>
+            <li><div><b>Break something.</b> Scenario mode drops NEAR 9%. Rhea health hits 1.47, and one Telegram alert arrives with two ranked fixes.</div></li>
+            <li><div><b>Fix it across chains.</b> Review option A on the Mac: a real NEAR Intents quote moves USDC from Base to NEAR, with the recipient, minimum output and expiry checked. You sign in your own wallets, or stop at the dry run.</div></li>
+            <li><div><b>Prove the privacy.</b> The privacy panel shows what left the Mac and where it went: the conversation to a verified NEAR AI TEE model, memory notes to OpenAI, both with labels instead of addresses, and no audio at all.</div></li>
+          </ol>
+          <p class="hk-note">The brain runs around the clock on your Mac: plugged in, set never to sleep, restarting its services by itself, with an offline alarm (proposed) that messages you on Telegram if it ever goes down.</p>
+        </div>
+      </section>
+
+      <!-- ===================== IDEA ===================== -->
+      <section id="idea">
+        <p class="eyebrow">The idea</p>
+        <h2>One assistant, four jobs</h2>
+        <p class="lede">Nierwall connects three things that normally live apart: your wallets, your intentions, and the market. It stays quiet until something you care about changes.</p>
+
+        <div class="jobs">
+          <article class="job j-money"><span class="job-tag">Knows your money</span><h3>One live picture of every wallet</h3><p>Reads every wallet you add and every position in it, starting with Rhea on NEAR and Aave V3 on Base. Turns them into one portfolio: health factors, exposure, liquid stables. Every number comes from chain reads and code.</p></article>
+          <article class="job j-you"><span class="job-tag">Knows you</span><h3>A memory of what you care about</h3><p>A Zep context graph remembers your goals, your limits, what each wallet is for, how you like to be told things, and what you decided last time. It replaces the fixed rule catalog.</p></article>
+          <article class="job j-watch"><span class="job-tag">Keeps watch</span><h3>Checks more often near a limit</h3><p>Anything you care about that can be measured becomes a watch with a hard threshold you confirmed. The checks run 24/7 on your always-on Mac and reach you on Telegram wherever you are.</p></article>
+          <article class="job j-fix"><span class="job-tag">Brings you fixes</span><h3>Concrete options from any chain</h3><p>When a watch trips, it works out real options, such as moving 1,400 USDC from Base through NEAR Intents to repay your Rhea loan. It simulates each one, ranks them the way you would, and tells you. You sign in your own wallets.</p></article>
+        </div>
+
+        <div class="never" aria-label="Things Nierwall never does">
+          <div><b>No keys</b><span>Never asks for or holds a seed phrase or private key.</span></div>
+          <div><b>No signing</b><span>Never sends a transaction. Only your wallets do, after you review.</span></div>
+          <div><b>No AI math</b><span>Code computes every money number. The AI only explains them.</span></div>
+          <div><b>No false calm</b><span>Stale or missing data shows as unknown, never as safe.</span></div>
+        </div>
+
+        <div class="watchlist">
+          <h3>What it watches around the clock</h3>
+          <ul>
+            <li><b>Prices.</b> A level ("ETH below $2,500"), a move over a window ("ETH down 10% in 24 hours"), or a drop from the recent high.</li>
+            <li><b>Loans.</b> Health below your floor, or "ETH within 10% of my liquidation price", on Rhea and Aave.</li>
+            <li><b>Portfolio rules.</b> Cash reserve below your minimum, too much in one asset, a stablecoin losing its peg.</li>
+            <li><b>Wallet activity.</b> Unexpected outflows, and NEAR Intents transfers that arrive late or get stuck.</li>
+            <li><b>Itself.</b> "I can't refresh data", so silence never means safe.</li>
+          </ul>
+          <p class="ex"><b>Example: "Warn me if ETH drops 10%."</b> Nierwall asks whether you mean 10% below today's price, a 10% drop within 24 hours, or 10% off the recent high. It reads back "Watch: ETH below $2,700" and checks about once a minute. When it trips, a Telegram message tells you the move, what it does to your loans, and the fixes if one is at risk.</p>
+        </div>
+
+        <div class="changes">
+          <h3>What's different from the Codex plan</h3>
+          <ul>
+            <li><span class="tag t-new">New</span>A Zep context graph replaces the fixed rule catalog. Your rules become things Nierwall knows about you, and measurable ones become watches you confirm.</li>
+            <li><span class="tag t-new">New</span>A Siri-style menu-bar app is the main way you use it: a hotkey, voice in and out, cards and local notifications.</li>
+            <li><span class="tag t-near">NEAR</span>NEAR where it counts: NEAR AI Cloud for the assistant's conversations, Rhea on NEAR as the first protocol, and NEAR Intents for cross-chain fixes.</li>
+            <li><span class="tag t-chg">Changed</span>Built for one person first. The brain runs on your Mac, kept on 24/7. The multi-tenant SaaS, partner SDK, Snap and extension are parked.</li>
+            <li><span class="tag t-keep">Kept</span>Deterministic money math, watch-only by default, Telegram buttons that never trade, and the Aave spec.</li>
+          </ul>
+          <a class="more" href="#diff">Full side-by-side comparison</a>
+        </div>
+      </section>
+
+      <!-- ===================== NEAR ===================== -->
+      <section id="near">
+        <p class="eyebrow">How NEAR fits</p>
+        <h2>Four NEAR pieces, each doing real work</h2>
+        <p class="lede">Each one fills a real role in the product. NEAR goes where it adds something; elsewhere Nierwall uses whatever works best, such as OpenAI for building the memory.</p>
+
+        <div class="nears">
+          <article class="nc">
+            <div class="nc-top"><h3>NEAR AI Cloud</h3><span class="nc-role">The private brain</span></div>
+            <p>The assistant's conversations run here: understanding what you ask, planning fixes and explaining them. Nierwall uses models hosted on NEAR's own TEE GPUs, GLM-5.3-Flash or Qwen3.6, through NEAR's inference SDK, which checks attestation before requests and can encrypt end to end. The app shows which model answered and when its attestation was last verified.</p>
+            <div class="tracks"><span class="chip c-near">Privacy &amp; Private AI</span><span class="chip c-near">AI Security</span></div>
+          </article>
+          <article class="nc">
+            <div class="nc-top"><h3>NEAR Intents</h3><span class="nc-role">Fixes from any chain</span></div>
+            <p>When the money to fix a loan sits on another chain, a 1Click quote moves it, for example USDC on Base to your NEAR account. Previews use dry quotes, and a deposit address is only requested once you confirm. Nierwall checks the recipient, minimum output and expiry before you ever see a quote.</p>
+            <div class="tracks"><span class="chip c-near">Open Innovation</span><span class="chip c-near">AI Security</span></div>
+          </article>
+          <article class="nc">
+            <div class="nc-top"><h3>Rhea</h3><span class="nc-role">Lending on NEAR</span></div>
+            <p>Rhea is NEAR's lending protocol and a hackathon partner. Nierwall reads your Rhea positions and simulates fixes with the health-factor previews built into Rhea's SDK, such as <code>recomputeHealthFactorRepay</code>.</p>
+            <div class="tracks"><span class="chip c-near">Open Innovation</span></div>
+          </article>
+          <article class="nc">
+            <div class="nc-top"><h3>NEAR Connect</h3><span class="nc-role">Signing on NEAR</span></div>
+            <p>NEAR-side steps, such as a Rhea repay, are signed in your own NEAR wallet through NEAR Connect, HOT Labs' wallet connector. Steps on Base go to Rabby or MetaMask. Nierwall never holds a key.</p>
+            <div class="tracks"><span class="chip c-near">AI Security</span></div>
+          </article>
+        </div>
+        <div class="notes">
+          <div><b>Where NEAR isn't used.</b> Memory building runs on OpenAI, which is Graphiti's default and best-tested setup. It gets labels and short facts, never addresses. Pointing it at NEAR AI later is a configuration change.</div>
+          <div><b>Hosting.</b> The brain runs on your own Mac, kept on 24/7. NEAR's TEE services (IronClaw, OutLayer) can't run this stack, so Phala is the option if it ever has to leave your Mac.</div>
+        </div>
+      </section>
+
+      <!-- ===================== MAP ===================== -->
+      <section id="map">
+        <p class="eyebrow">How it connects</p>
+        <h2>The brain lives on your Mac</h2>
+        <p class="lede">The app and the brain both run on your Mac, which stays on around the clock. Four kinds of traffic leave it: conversation prompts to NEAR AI's TEEs, memory facts to OpenAI, chain reads, and alerts.</p>
+
+        <figure class="fig">
+          <p class="scroll-hint">Scroll sideways to see the whole map.</p>
+          <div class="fig-scroll">
+            <svg class="sysmap" viewBox="0 0 1120 690" role="img" aria-labelledby="sm-t sm-d">
+              <title id="sm-t">How Nierwall's pieces connect in the hackathon build</title>
+              <desc id="sm-d">Your Mac holds the menu-bar app, your wallets, and the brain: agent, context graph, scheduler, portfolio engine, watch engine, action planner and local storage. The agent talks to NEAR AI Cloud over an attested, end-to-end encrypted channel, and the context graph sends memory facts, with labels only, to the OpenAI API. The portfolio engine reads Rhea on NEAR and Aave V3 on Base. The action planner gets quotes from NEAR Intents and sends alerts through a Telegram bot. Only your wallets send transactions to the blockchains; the brain only reads.</desc>
+              <defs>
+                <marker id="arr" viewBox="0 0 10 10" refX="8.6" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z" class="arr-head"/></marker>
+                <marker id="arrs" viewBox="0 0 10 10" refX="8.6" refY="5" markerWidth="4.6" markerHeight="4.6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z" class="arr-head-sec"/></marker>
+              </defs>
+
+              <text class="zl zl-mac" x="18" y="28">YOUR MAC</text>
+              <text class="zl zl-out" x="658" y="28">OUTSIDE YOUR MAC</text>
+              <rect class="zone zone-mac" x="16" y="40" width="610" height="540" rx="18"/>
+              <rect class="zone zone-out" x="656" y="40" width="448" height="540" rx="18"/>
+              <rect class="subzone" x="252" y="72" width="358" height="494" rx="14"/>
+              <text class="szl" x="268" y="556">BRAIN · LOCAL SERVICES, RUNNING 24/7</text>
+
+              <!-- app -->
+              <rect class="nd nd-mac" x="32" y="88" width="204" height="312" rx="12"/>
+              <text class="nt" x="50" y="116">Menu-bar app</text>
+              <text class="ns" x="50" y="136">Swift · notarized</text>
+              <g class="nl">
+                <circle cx="54" cy="164" r="2.5"/><text x="64" y="168">Hotkey + floating panel</text>
+                <circle cx="54" cy="192" r="2.5"/><text x="64" y="196">On-device voice in/out</text>
+                <circle cx="54" cy="220" r="2.5"/><text x="64" y="224">Cards and local alerts</text>
+                <circle cx="54" cy="248" r="2.5"/><text x="64" y="252">Wallet list and labels</text>
+                <circle cx="54" cy="276" r="2.5"/><text x="64" y="280">Review and sign screen</text>
+                <circle cx="54" cy="304" r="2.5"/><text x="64" y="308">Shows AI attestation</text>
+                <circle cx="54" cy="332" r="2.5"/><text x="64" y="336">Seed-phrase tripwire</text>
+              </g>
+
+              <!-- wallets -->
+              <rect class="nd nd-mac" x="32" y="440" width="204" height="112" rx="12"/>
+              <text class="nt" x="50" y="468">Your wallets</text>
+              <text class="ns" x="50" y="490">Rabby or MetaMask (Base)</text>
+              <text class="ns" x="50" y="510">NEAR wallet through</text>
+              <text class="ns" x="50" y="528">NEAR Connect (HOT)</text>
+              <line class="ed" x1="134" y1="400" x2="134" y2="436" marker-end="url(#arr)"/>
+              <text class="el" x="144" y="423">tx to sign</text>
+              <line class="ed" x1="134" y1="552" x2="134" y2="608" marker-end="url(#arr)"/>
+              <text class="el" x="144" y="598">signed tx</text>
+
+              <line class="ed" x1="237" y1="128" x2="267" y2="128" marker-start="url(#arr)" marker-end="url(#arr)"/>
+
+              <!-- brain: left column -->
+              <rect class="nd nd-mac" x="268" y="88" width="136" height="80" rx="12"/>
+              <text class="nt" x="284" y="114">Agent</text>
+              <text class="ns" x="284" y="134">talks, plans,</text>
+              <text class="ns" x="284" y="152">uses tools</text>
+
+              <rect class="nd nd-mac" x="268" y="196" width="136" height="242" rx="12"/>
+              <text class="nt" x="284" y="222">Context graph</text>
+              <text class="ns" x="284" y="242">Zep engine</text>
+              <text class="ns" x="284" y="260">Graphiti · FalkorDB</text>
+              <g class="glyph">
+                <line x1="296" y1="336" x2="330" y2="308"/><line x1="330" y1="308" x2="370" y2="330"/><line x1="330" y1="308" x2="316" y2="384"/><line x1="370" y1="330" x2="372" y2="394"/><line x1="316" y1="384" x2="372" y2="394"/><line x1="370" y1="330" x2="388" y2="296"/>
+                <circle cx="296" cy="336" r="6"/><circle class="hot" cx="330" cy="308" r="8"/><circle cx="370" cy="330" r="6.5"/><circle cx="316" cy="384" r="5.5"/><circle cx="372" cy="394" r="6"/><circle cx="388" cy="296" r="4.5"/>
+              </g>
+              <line class="ed" x1="336" y1="169" x2="336" y2="195" marker-start="url(#arr)" marker-end="url(#arr)"/>
+
+              <!-- brain: pipeline -->
+              <rect class="nd nd-mac" x="452" y="88" width="142" height="48" rx="12"/>
+              <text class="nt nt-s" x="468" y="108">Scheduler</text>
+              <text class="ns" x="468" y="126">runs the checks</text>
+              <rect class="nd nd-mac" x="452" y="156" width="142" height="130" rx="12"/>
+              <text class="nt nt-s" x="468" y="180">Portfolio engine</text>
+              <text class="ns" x="468" y="198">positions → numbers</text>
+              <text class="ns" x="468" y="216">health previews</text>
+              <rect class="nd nd-mac" x="452" y="306" width="142" height="56" rx="12"/>
+              <text class="nt nt-s" x="468" y="328">Watch engine</text>
+              <text class="ns" x="468" y="346">hard checks, no AI</text>
+              <rect class="nd nd-mac" x="452" y="382" width="142" height="56" rx="12"/>
+              <text class="nt nt-s" x="468" y="404">Action planner</text>
+              <text class="ns" x="468" y="422">fixes + simulation</text>
+              <line class="ed" x1="523" y1="136" x2="523" y2="154" marker-end="url(#arr)"/>
+              <line class="ed" x1="523" y1="286" x2="523" y2="304" marker-end="url(#arr)"/>
+              <line class="ed" x1="523" y1="362" x2="523" y2="380" marker-end="url(#arr)"/>
+              <line class="ed" x1="404" y1="334" x2="450" y2="334" marker-end="url(#arr)"/>
+              <text class="el" x="427" y="326" text-anchor="middle">limits</text>
+              <line class="ed" x1="404" y1="410" x2="450" y2="410" marker-end="url(#arr)"/>
+              <text class="el" x="427" y="402" text-anchor="middle">context</text>
+
+              <rect class="nd nd-mac" x="268" y="470" width="326" height="66" rx="12"/>
+              <text class="nt" x="284" y="496">Local storage</text>
+              <text class="ns" x="284" y="516">snapshots · graph · alerts · encrypted on disk</text>
+
+              <!-- private path to NEAR AI -->
+              <path class="ed-sec" d="M336,87 V56 H640 V112 H674" marker-start="url(#arrs)" marker-end="url(#arrs)"/>
+              <text class="el el-sec" x="488" y="50" text-anchor="middle">attested · end-to-end encrypted</text>
+
+              <!-- outside -->
+              <rect class="nd nd-near" x="676" y="78" width="408" height="72" rx="12"/>
+              <text class="nt" x="694" y="104">NEAR AI Cloud</text>
+              <text class="ns" x="694" y="124">TEE models for the assistant's conversations</text>
+              <text class="ns" x="694" y="142">attestation checked before each session</text>
+              <text class="ntag" x="1068" y="100" text-anchor="end">NEAR</text>
+
+              <rect class="nd nd-near" x="676" y="166" width="408" height="48" rx="12"/>
+              <text class="nt" x="694" y="186">Rhea lending</text>
+              <text class="ns" x="694" y="204">NEAR's lending protocol · read, simulate, repay</text>
+              <text class="ntag" x="1068" y="186" text-anchor="end">NEAR</text>
+              <line class="ed" x1="594" y1="190" x2="674" y2="190" marker-end="url(#arr)"/>
+              <text class="el" x="640" y="182" text-anchor="middle">reads</text>
+
+              <rect class="nd nd-out" x="676" y="228" width="408" height="48" rx="12"/>
+              <text class="nt" x="694" y="248">Aave V3 · Base</text>
+              <text class="ns" x="694" y="266">Aave API and Base RPC reads</text>
+              <line class="ed" x1="594" y1="252" x2="674" y2="252" marker-end="url(#arr)"/>
+              <text class="el" x="640" y="244" text-anchor="middle">reads</text>
+
+              <rect class="nd nd-out" x="676" y="296" width="408" height="64" rx="12"/>
+              <text class="nt" x="694" y="322">Telegram bot</text>
+              <text class="ns" x="694" y="342">alerts and quick replies on your phone</text>
+              <path class="ed" d="M594,392 H636 V328 H674" marker-end="url(#arr)"/>
+              <text class="el" x="655" y="320" text-anchor="middle">alerts</text>
+
+              <rect class="nd nd-near" x="676" y="382" width="408" height="56" rx="12"/>
+              <text class="nt" x="694" y="404">NEAR Intents</text>
+              <text class="ns" x="694" y="424">1Click quotes move funds across chains for fixes</text>
+              <text class="ntag" x="1068" y="404" text-anchor="end">NEAR</text>
+              <line class="ed" x1="594" y1="410" x2="674" y2="410" marker-end="url(#arr)"/>
+              <text class="el" x="655" y="424" text-anchor="middle">quotes</text>
+
+              <rect class="nd nd-out" x="676" y="470" width="408" height="70" rx="12"/>
+              <text class="nt" x="694" y="496">OpenAI API</text>
+              <text class="ns" x="694" y="516">builds memory facts and embeddings for Graphiti</text>
+              <text class="ns" x="694" y="532">sees labels, never addresses</text>
+              <path class="ed" d="M380,439 V454 H640 V505 H674" marker-end="url(#arr)"/>
+              <text class="el" x="520" y="450" text-anchor="middle">memory facts · labels only</text>
+
+              <rect class="lg-near" x="676" y="554" width="18" height="12" rx="4"/>
+              <text class="lg-t" x="702" y="564">NEAR ecosystem</text>
+              <rect class="lg-out" x="836" y="554" width="18" height="12" rx="4"/>
+              <text class="lg-t" x="862" y="564">Other services</text>
+
+              <!-- chains -->
+              <rect class="bar" x="16" y="612" width="1088" height="60" rx="14"/>
+              <text class="nt" x="40" y="647">Blockchains</text>
+              <text class="ns" x="148" y="647">NEAR · Base · others through NEAR Intents</text>
+              <text class="bar-note" x="1080" y="647" text-anchor="end">The brain only reads. Only your wallets write.</text>
+            </svg>
+          </div>
+          <figcaption>The thick green line carries your conversation to NEAR AI Cloud's TEE models, and only after the attestation check passes. The memory line sends short facts to OpenAI with labels, never addresses. Chain reads go out one address at a time.</figcaption>
+        </figure>
+
+        <div class="parts">
+          <div class="part p-mac">
+            <h4>On your Mac</h4>
+            <dl>
+              <dt>Menu-bar app</dt><dd>The face. Voice and text in, spoken answers and cards out. Holds your wallet list and labels.</dd>
+              <dt>Brain</dt><dd>Agent, Zep memory, portfolio and watch engines, action planner. Docker services that run 24/7 and restart themselves.</dd>
+              <dt>Your wallets</dt><dd>Rabby or MetaMask for Base, your NEAR wallet through NEAR Connect. The only things that sign.</dd>
+            </dl>
+          </div>
+          <div class="part p-near">
+            <h4>NEAR</h4>
+            <dl>
+              <dt>NEAR AI Cloud</dt><dd>The assistant's language model, running in TEEs.</dd>
+              <dt>Rhea</dt><dd>The NEAR lending protocol Nierwall watches first.</dd>
+              <dt>NEAR Intents</dt><dd>Moves funds between chains when a fix needs them.</dd>
+            </dl>
+          </div>
+          <div class="part p-out">
+            <h4>Other services</h4>
+            <dl>
+              <dt>Aave V3 on Base</dt><dd>The cross-chain half of the demo, read through the Aave API and a Base RPC.</dd>
+              <dt>Telegram</dt><dd>Reaches you away from the Mac. Buttons open, snooze or explain. They never trade.</dd>
+              <dt>OpenAI API</dt><dd>Builds the Zep memory from what you say. It sees labels, never addresses.</dd>
+            </dl>
+          </div>
+        </div>
+
+        <div class="wiring">
+          <div><b>Addresses stay on the Mac</b><span>The models see labels like "Cash" and "NEAR wallet". Real addresses only leave as individual read requests and, when you approve a cross-chain fix, inside that one Intents quote.</span></div>
+          <div><b>Math stays in code</b><span>Health factors and fix simulations come from the portfolio engine, using Rhea's and Aave's own previews. The model receives the results and explains them.</span></div>
+        </div>
+      </section>
+
+      <!-- ===================== DAY ===================== -->
+      <section id="day">
+        <p class="eyebrow">The full flow</p>
+        <h2>A day with Nierwall</h2>
+        <p class="lede">The whole loop in one day: a morning check, a drop while you're out, a cross-chain fix, and a change of plans. Example portfolio: 10,000 NEAR supplied on Rhea against 10,000 USDC borrowed, a healthy Aave loan on Base, 5,500 USDC in a Base wallet called Cash, and 2,500 NEAR in your NEAR wallet. Health factors use a simplified 60% collateral factor.</p>
+
+        <div class="day">
+          <div class="beat">
+            <div class="beat-time">08:05</div>
+            <div>
+              <div class="beat-head"><h3>Morning check</h3><span class="chip c-mac">Mac</span><span class="chip c-you">voice</span></div>
+              <p><span class="q">“Morning. Anything I should know?”</span> Nierwall answers in two sentences: Rhea health 1.62 against your 1.50 floor, Aave on Base at 2.10, Cash above your reserve. A badge shows the answer came from a verified TEE model on NEAR AI Cloud.</p>
+            </div>
+          </div>
+
+          <div class="beat">
+            <div class="beat-time">13:40</div>
+            <div>
+              <div class="beat-head"><h3>NEAR drops while you're out</h3><span class="chip c-brain">Brain</span><span class="chip c-near">NEAR</span></div>
+              <p>NEAR falls about 9%. The scheduler had already tightened its checks as health neared the floor. Rhea health reads 1.47, so the watch trips. The planner finds two fixes and simulates both with Rhea's own health preview, and a NEAR Intents dry quote prices the cross-chain one. The agent ranks them from your graph: you prefer repaying, and your NEAR wallet is long-term.</p>
+            </div>
+          </div>
+
+          <div class="beat">
+            <div class="beat-time">13:41</div>
+            <div class="beat-body">
+              <div>
+                <div class="beat-head"><h3>The alert reaches you</h3><span class="chip c-out">Telegram</span></div>
+                <p>You're away from the Mac, so the alert goes to Telegram at your chosen detail level. It names wallets by nickname and never shows addresses.</p>
+                <p>Option A ranks first because it repays debt and keeps Cash above your 3,000 USDC reserve. Option B still shows, with its trade-off spelled out.</p>
+              </div>
+              <div class="tg" aria-label="Example Telegram alert">
+                <div class="tg-head"><span class="tg-av">N</span><b>Nierwall</b><span class="t">13:41</span></div>
+                <p><strong>Rhea · NEAR is below your floor</strong><br>Health factor 1.47 (floor 1.50). NEAR is down 9% since this morning.</p>
+                <p><strong>A.</strong> Move 1,400 USDC from Cash (Base) to NEAR through NEAR Intents, then repay → health 1.71. Cash keeps 4,100 USDC.<br><strong>B.</strong> Add about 1,570 NEAR from your NEAR wallet → health 1.70. Uses your long-term NEAR.</p>
+                <p class="note">Estimates from 13:40 data. Nothing moves until you review and sign.</p>
+                <div class="tg-btns"><span>Review A</span><span>Review B</span><span>Snooze 1h</span><span>Why?</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="beat">
+            <div class="beat-time">14:20</div>
+            <div class="beat-body">
+              <div>
+                <div class="beat-head"><h3>You fix it at the Mac</h3><span class="chip c-mac">Mac</span><span class="chip c-wallet">Wallets</span><span class="chip c-near">NEAR Intents</span></div>
+                <p>You click the notification. Nierwall re-checks everything and fetches a fresh quote. NEAR moved a little, so the numbers update to 1.46 → 1.70.</p>
+                <p>You sign step 1 in Rabby. About two minutes later the USDC lands in your NEAR account, and you sign the Rhea repay in your NEAR wallet. Nierwall waits for both confirmations, then says: <span class="q">“Done. Health is 1.70.”</span></p>
+              </div>
+              <div class="review" aria-label="Example review sheet">
+                <div class="rv-head"><b>Review option A</b><span>re-checked 14:20:31</span></div>
+                <dl>
+                  <div><dt>Step 1 · Base</dt><dd>Send 1,400 USDC from Cash to a NEAR Intents deposit address. Sign in Rabby.</dd></div>
+                  <div><dt>Arrives</dt><dd>≈ 1,397 USDC in your NEAR account, in about 2 min</dd></div>
+                  <div><dt>Step 2 · NEAR</dt><dd>Repay 1,397 USDC on Rhea. Sign in your NEAR wallet.</dd></div>
+                  <div><dt>Health</dt><dd>1.46 → 1.70<span class="was">was 1.47 → 1.71 at 13:40</span></dd></div>
+                  <div><dt>Checked</dt><dd>Recipient is your account · minimum output · quote valid until 14:35</dd></div>
+                  <div class="priv"><dt>Privacy</dt><dd>This route links your Base and NEAR addresses on-chain.</dd></div>
+                </dl>
+                <div class="rv-actions"><span class="btn btn-primary">Start step 1</span><span class="btn">Cancel</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="beat">
+            <div class="beat-time">14:24</div>
+            <div>
+              <div class="beat-head"><h3>It learns</h3><span class="chip c-brain">Brain</span></div>
+              <p>The decision goes into memory as an event: <code>chose repay over adding NEAR · health 1.46 → 1.70</code>. Next time a loan needs help, repay options rank first and the explanation says why.</p>
+            </div>
+          </div>
+
+          <div class="beat">
+            <div class="beat-time">21:30</div>
+            <div>
+              <div class="beat-head"><h3>You change the plan</h3><span class="chip c-mac">Mac</span><span class="chip c-you">voice</span></div>
+              <p><span class="q">“I'm flying tomorrow until Sunday. Only wake me for critical stuff.”</span> Nierwall stores a quiet-mode fact that starts Friday and ends Sunday night, reads it back, and you confirm. On Monday it's back to normal without anyone remembering to undo it.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sub-h">
+          <p class="eyebrow">Step by step</p>
+          <h3>The four flows underneath</h3>
+          <p>Each chip shows where a step happens. Dashed chips are the local brain.</p>
+        </div>
+
+        <div class="flows">
+          <div class="flow">
+            <h3>First run</h3>
+            <ol>
+              <li><div><div class="who"><span class="chip c-you">You</span><span class="chip c-mac">Mac</span></div>Install the app. It creates a device key in the Mac's Secure Enclave.</div></li>
+              <li><div><div class="who"><span class="chip c-you">You</span><span class="chip c-mac">Mac</span></div>Paste wallet addresses and name them: Cash on Base, your NEAR account. No seed phrase, no signature.</div></li>
+              <li><div><div class="who"><span class="chip c-brain">Brain</span><span class="chip c-near">NEAR AI</span></div>The brain checks NEAR AI Cloud's attestation. If the check fails, no prompt is sent.</div></li>
+              <li><div><div class="who"><span class="chip c-brain">Brain</span><span class="chip c-near">Rhea</span><span class="chip c-out">Aave</span></div>It finds your positions: Rhea on NEAR, Aave on Base.</div></li>
+              <li><div><div class="who"><span class="chip c-you">You</span><span class="chip c-brain">Brain</span></div>A five-minute intake chat: goals, comfort levels, off-limits wallets, when and how to tell you. This becomes your first graph.</div></li>
+              <li><div><div class="who"><span class="chip c-brain">Brain</span><span class="chip c-you">You</span></div>Nierwall proposes starting watches from what you said. You confirm or edit each one.</div></li>
+              <li><div><div class="who"><span class="chip c-you">You</span><span class="chip c-out">Telegram</span></div>Link Telegram with a one-time link and pick how much detail alerts show.</div></li>
+            </ol>
+          </div>
+
+          <div class="flow">
+            <h3>Ask or teach</h3>
+            <ol>
+              <li><div><div class="who"><span class="chip c-you">You</span><span class="chip c-mac">Mac</span></div>Press ⌘⇧Space and speak. On-device speech recognition turns it into text.</div></li>
+              <li><div><div class="who"><span class="chip c-brain">Brain</span></div>The agent pulls what matters about you from the graph: limits, preferences, recent alerts.</div></li>
+              <li><div><div class="who"><span class="chip c-brain">Brain</span></div>Tools produce the numbers: a fresh snapshot, health factors, a stress test. Code computes every figure.</div></li>
+              <li><div><div class="who"><span class="chip c-brain">Brain</span><span class="chip c-near">NEAR AI</span></div>A NEAR AI TEE model writes the reply from those facts, with labels instead of addresses. Nierwall checks each number in it against the tool results.</div></li>
+              <li><div><div class="who"><span class="chip c-mac">Mac</span></div>You get a short spoken answer plus cards.</div></li>
+              <li><div><div class="who"><span class="chip c-brain">Brain</span><span class="chip c-out">OpenAI</span></div>In the background the conversation becomes graph facts, built with OpenAI from labeled text. Anything that would change a watch comes back to you first.</div></li>
+            </ol>
+          </div>
+
+          <div class="flow">
+            <h3>Watching</h3>
+            <ol>
+              <li><div><div class="who"><span class="chip c-brain">Brain</span></div>The scheduler runs checks around the clock: every 15 to 60 seconds near a limit, every few minutes when calm.</div></li>
+              <li><div><div class="who"><span class="chip c-brain">Brain</span><span class="chip c-near">Rhea</span><span class="chip c-out">Aave</span></div>Fresh position and price reads. Old or conflicting data becomes "unknown", never "safe".</div></li>
+              <li><div><div class="who"><span class="chip c-brain">Brain</span></div>A breach becomes one incident with evidence. Repeats don't re-alert, and getting worse escalates.</div></li>
+              <li><div><div class="who"><span class="chip c-brain">Brain</span><span class="chip c-near">NEAR Intents</span></div>The planner builds fixes from wallets you allow: repay or add collateral, with a NEAR Intents quote when funds sit on another chain. Each one is simulated with Rhea's or Aave's own health preview.</div></li>
+              <li><div><div class="who"><span class="chip c-brain">Brain</span><span class="chip c-near">NEAR AI</span></div>The agent ranks and words the options from your graph. If the model is down, a plain template goes out instead.</div></li>
+              <li><div><div class="who"><span class="chip c-mac">Mac</span><span class="chip c-out">Telegram</span></div>A Mac notification if you're at the Mac, Telegram if not. Quiet hours hold unless it's critical and you allowed that.</div></li>
+            </ol>
+          </div>
+
+          <div class="flow">
+            <h3>Fix it</h3>
+            <ol>
+              <li><div><div class="who"><span class="chip c-you">You</span><span class="chip c-mac">Mac</span></div>Tap Review in Telegram or click the Mac notification. The panel opens that option.</div></li>
+              <li><div><div class="who"><span class="chip c-brain">Brain</span><span class="chip c-near">NEAR Intents</span></div>Everything is re-checked: position, prices, balances and a fresh quote. Stale options are dropped.</div></li>
+              <li><div><div class="who"><span class="chip c-mac">Mac</span></div>The review sheet lists each step, wallet, amount, health before and after, fees, and the fact that a cross-chain route links two of your addresses.</div></li>
+              <li><div><div class="who"><span class="chip c-you">You</span><span class="chip c-wallet">Wallets</span></div>Step 1 on Base in Rabby, step 2 on NEAR in your NEAR wallet. Nierwall holds no keys.</div></li>
+              <li><div><div class="who"><span class="chip c-brain">Brain</span><span class="chip c-near">NEAR</span></div>Nierwall tracks the Intents delivery and the repay until both confirm, then closes the incident. A pending wallet popup never counts as done.</div></li>
+              <li><div><div class="who"><span class="chip c-brain">Brain</span></div>Your choice and its result go into memory, so the next ranking reflects it.</div></li>
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== MEMORY ===================== -->
+      <section id="memory">
+        <p class="eyebrow">Change 1 · Zep context graph</p>
+        <h2>A memory instead of a rulebook</h2>
+        <p class="lede">The Codex plan made you fit every wish into a fixed list of rule types. Here you just talk. Nierwall keeps what matters in a context graph, which is Zep's own name for its temporal knowledge graph, and turns anything measurable into a watch you confirm.</p>
+
+        <div class="compare">
+          <div class="cmp cmp-old">
+            <p class="eyebrow">Codex plan</p>
+            <h3>Pick from a rulebook</h3>
+            <ol>
+              <li>You type a rule.</li>
+              <li>The AI maps it onto one of 12 rule types.</li>
+              <li>It's stored as a rule tree and checked.</li>
+            </ol>
+            <p class="small">Anything outside the list is "unsupported". It forgets why you wanted the rule. Every new idea needs new code.</p>
+          </div>
+          <div class="cmp cmp-new">
+            <p class="eyebrow">This plan</p>
+            <h3>Talk, and it remembers</h3>
+            <ol>
+              <li>You talk normally, over days and weeks.</li>
+              <li>Zep's engine turns what you say into dated facts in a graph.</li>
+              <li>Measurable facts become watches you confirm. The rest shapes ranking, wording and timing.</li>
+            </ol>
+            <p class="small">Limits can expire ("until Sunday"), carry reasons ("my NEAR wallet is long-term"), and learn from what you chose.</p>
+          </div>
+        </div>
+
+        <div class="sub-h">
+          <p class="eyebrow">What goes in</p>
+          <h3>Three kinds of memory</h3>
+        </div>
+        <div class="layers">
+          <div class="layer l-you">
+            <h4>About you</h4>
+            <ul>
+              <li>Goals: "house deposit by March"</li>
+              <li>Comfort levels: "nervous below 1.5 health"</li>
+              <li>Hard nos: "don't sell my NEAR to fix loans"</li>
+              <li>How to tell you: "short answers, numbers first"</li>
+              <li>Schedule: "quiet 23:00–07:00"</li>
+            </ul>
+          </div>
+          <div class="layer l-money">
+            <h4>Your money's shape</h4>
+            <ul>
+              <li>Wallets and their roles: Cash on Base, long-term NEAR</li>
+              <li>What each position is for</li>
+              <li>Protocols you trust or avoid</li>
+              <li>Which wallets fixes may draw from</li>
+            </ul>
+          </div>
+          <div class="layer l-hist">
+            <h4>What happened</h4>
+            <ul>
+              <li>Alerts and how they ended</li>
+              <li>Options you chose and skipped</li>
+              <li>Positions opened and closed</li>
+              <li>Conversations, as source episodes</li>
+            </ul>
+          </div>
+        </div>
+        <div class="keepout">
+          <b>Kept out of the graph on purpose</b>
+          <ul>
+            <li><b>Live numbers</b> such as prices, balances and health factors. They change every block, so they live in the snapshot store and tools fetch them fresh.</li>
+            <li><b>Wallet addresses.</b> They stay in the wallet list on your Mac. The graph and the model only see labels.</li>
+            <li><b>Text written by outsiders</b>, such as token names, transaction memos and website content. See "Keeping the memory clean" below.</li>
+          </ul>
+        </div>
+
+        <div class="sub-h">
+          <p class="eyebrow">Example</p>
+          <h3>What your graph might look like after a week</h3>
+        </div>
+        <figure class="fig">
+          <p class="scroll-hint">Scroll sideways to see the whole graph.</p>
+          <div class="fig-scroll">
+            <svg class="mgraph" viewBox="0 0 880 470" role="img" aria-labelledby="mg-t mg-d">
+              <title id="mg-t">Example context graph</title>
+              <desc id="mg-d">You sit at the center. You own a Base wallet called Cash, used as everyday cash, and a NEAR wallet used for long-term holdings. You prefer repaying before adding collateral, keep quiet hours from 23:00 to 07:00 unless an alert is critical, and want to keep at least 3,000 USDC in Cash. You want an alert when your Rhea loan on NEAR has a health factor below 1.50, valid since 3 November; an older fact with a 1.30 threshold ended on 3 November. On 12 November you chose to repay 1,397 USDC on that loan.</desc>
+              <line class="ge" x1="430" y1="202" x2="430" y2="85"/>
+              <text class="gl" x="438" y="150">PREFERS</text>
+              <line class="ge" x1="430" y1="278" x2="430" y2="401"/>
+              <text class="gl" x="438" y="348">PREFERS</text>
+              <line class="ge" x1="396" y1="223" x2="231" y2="140"/>
+              <text class="gl" x="313" y="185" text-anchor="middle">OWNS · role: everyday cash</text>
+              <line class="ge" x1="396" y1="257" x2="231" y2="342"/>
+              <text class="gl" x="313" y="304" text-anchor="middle">OWNS · role: long-term holdings</text>
+              <path class="ge ge-ended" d="M452,206 Q500,110 639,120"/>
+              <text class="gl gl-ended" x="528" y="128" text-anchor="middle">health &lt; 1.30 · ended 3 Nov</text>
+              <line class="ge ge-hot" x1="466" y1="228" x2="639" y2="140"/>
+              <text class="gl gl-hot" x="553" y="180" text-anchor="middle">WANTS_ALERT</text>
+              <text class="gl gl-hot" x="553" y="194" text-anchor="middle">health &lt; 1.50 · since 3 Nov</text>
+              <line class="ge" x1="745" y1="261" x2="745" y2="149"/>
+              <text class="gl" x="753" y="210">ON</text>
+              <line class="ge" x1="468" y1="248" x2="639" y2="281"/>
+              <text class="gl" x="554" y="268" text-anchor="middle">CHOSE</text>
+              <line class="ge" x1="460" y1="264" x2="639" y2="378"/>
+              <text class="gl" x="551" y="325" text-anchor="middle">GOAL</text>
+
+              <circle class="gn-you" cx="430" cy="240" r="38"/>
+              <text class="gt-you" x="430" y="246">You</text>
+              <rect class="gn gn-about" x="300" y="44" width="260" height="40" rx="20"/>
+              <text class="gt" x="430" y="69">Repay before adding collateral</text>
+              <rect class="gn gn-about" x="290" y="402" width="280" height="40" rx="20"/>
+              <text class="gt" x="430" y="427">Quiet 23:00–07:00 unless critical</text>
+              <rect class="gn gn-money" x="40" y="120" width="190" height="40" rx="20"/>
+              <text class="gt" x="135" y="145">Wallet · Cash (Base)</text>
+              <rect class="gn gn-money" x="40" y="322" width="190" height="40" rx="20"/>
+              <text class="gt" x="135" y="347">Wallet · NEAR</text>
+              <rect class="gn gn-money" x="640" y="104" width="210" height="44" rx="22"/>
+              <text class="gt" x="745" y="131">Rhea loan · NEAR</text>
+              <rect class="gn gn-hist" x="640" y="262" width="210" height="40" rx="20"/>
+              <text class="gt" x="745" y="287">Repaid 1,397 USDC · 12 Nov</text>
+              <rect class="gn gn-about" x="640" y="360" width="210" height="40" rx="20"/>
+              <text class="gt" x="745" y="385">Keep ≥ 3,000 USDC in Cash</text>
+            </svg>
+          </div>
+          <div class="legend">
+            <span><i class="sw sw-about"></i>About you</span>
+            <span><i class="sw sw-money"></i>Your money's shape</span>
+            <span><i class="sw sw-hist"></i>What happened</span>
+            <span><i class="sw sw-hot"></i>Fact that feeds a watch</span>
+            <span><i class="sw sw-ended"></i>Ended fact, kept as history</span>
+          </div>
+          <figcaption>Every fact has a start date and, when you change your mind, an end date. Nothing is overwritten, so Nierwall can answer "what was my limit last month, and why did I change it?"</figcaption>
+        </figure>
+
+        <div class="sub-h">
+          <p class="eyebrow">The core loop</p>
+          <h3>From a sentence to a watch</h3>
+        </div>
+        <ol class="steps">
+          <li><div><h4>You say it, however you like</h4><p class="say">“Ping me if my Rhea loan drops under 1.5. I get nervous below that.”</p></div></li>
+          <li><div><h4>The graph records a dated fact</h4>
+<code class="fact">You ─WANTS_ALERT→ Rhea loan (NEAR)
+  metric: health_factor   below: 1.50
+  valid_from: 3 Nov       <span class="dim">old fact (below 1.30) gets ended, not deleted</span></code></div></li>
+          <li><div><h4>Nierwall reads it back in plain words</h4>
+            <div class="confirm"><span>New watch: Rhea on NEAR, health factor below 1.50. Checked more often as you get close.</span><span class="btn btn-primary">Confirm</span><span class="btn">Edit</span></div></div></li>
+          <li><div><h4>The watch engine runs it as plain code</h4><p>A numeric check against fresh chain data. No AI is involved in this step, so it keeps working when the model is down.</p></div></li>
+          <li><div><h4>When it trips, the graph shapes the response</h4><p>Which fixes to offer first, which wallets to use, how much detail, whether to wake you. You prefer repaying and your NEAR wallet is long-term, so the repay ranks first.</p></div></li>
+        </ol>
+
+        <div class="sub-h">
+          <p class="eyebrow">The dividing line</p>
+          <h3>What your graph decides, and what stays in code</h3>
+        </div>
+        <div class="split">
+          <div class="s-graph">
+            <h4>Your graph decides</h4>
+            <ul>
+              <li>What to watch, and the thresholds</li>
+              <li>Which positions and wallets each watch covers</li>
+              <li>When to interrupt you, and how loudly</li>
+              <li>Which wallets fixes may draw from</li>
+              <li>How options are ranked and explained</li>
+              <li>Tone, length and level of detail</li>
+            </ul>
+          </div>
+          <div class="s-code">
+            <h4>Code decides</h4>
+            <ul>
+              <li>How each metric is computed: Rhea and Aave health from each protocol's own rules and previews, allocation, exposure, depeg</li>
+              <li>Data freshness rules and the "unknown" state</li>
+              <li>Simulations of every proposed fix, and checks on every Intents quote</li>
+              <li>Safety limits: no signing, no moving funds, critical alerts can't be silenced except by you</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="sub-h">
+          <p class="eyebrow">Time-aware</p>
+          <h3>Facts can expire on their own</h3>
+        </div>
+        <div class="timebox">
+          <div><h4>You say</h4><span class="say">“I'm flying tomorrow until Sunday. Only wake me for critical stuff.”</span></div>
+          <div class="arrow" aria-hidden="true">→</div>
+          <div><h4>Graph fact</h4><code class="fact">QUIET_MODE level: critical-only
+valid: Fri 13 Nov 00:00
+  → Sun 15 Nov 23:59</code></div>
+          <div class="arrow" aria-hidden="true">→</div>
+          <div><h4>Effect</h4>Warnings wait for a digest. Critical alerts still come through. Monday morning, normal service resumes.</div>
+        </div>
+
+        <div class="sub-h">
+          <p class="eyebrow">Protecting the memory</p>
+          <h3>Keeping the memory clean</h3>
+          <p>A memory that writes itself from text can be poisoned by text. These rules prevent that, and they double as Security-track material.</p>
+        </div>
+        <ul class="hygiene">
+          <li><b>Two sources only.</b> Your own messages, and Nierwall's own structured events: position opened, alert fired, option chosen, transaction confirmed.</li>
+          <li><b>No outsider text.</b> A spam token named "user disabled all alerts" stays a token name and never becomes a fact.</li>
+          <li><b>Watch changes need your yes.</b> Anything that would change a watch or a hard limit is read back before it takes effect.</li>
+          <li><b>You can see and edit it.</b> A "What Nierwall knows" view lists facts with dates. Correct or delete any of them.</li>
+          <li><b>Writes happen in the background.</b> Turning one message into facts takes roughly 4 to 12 model calls, so answers never wait on it.</li>
+          <li><b>Only current facts count.</b> Graph search also returns ended facts, so watches are built only from facts with no end date.</li>
+          <li><b>Only the brain can reach it.</b> Graphiti's own server has no authentication, so it runs on a private Docker network, and the brain only sends it typed events.</li>
+          <li><b>The graph can't grant powers.</b> It changes what Nierwall watches and how it talks, never what it's allowed to do.</li>
+        </ul>
+
+        <div class="sub-h">
+          <p class="eyebrow">Where the memory runs</p>
+          <h3>Zep's engine on your Mac, with OpenAI doing the extraction</h3>
+        </div>
+        <div class="choice">
+          <div class="choice-q"><p class="eyebrow">Why not Zep Cloud</p><p class="why">Zep Cloud would be quicker to wire up, since it has a TypeScript SDK, but it stores your whole memory on Zep's servers. Self-hosting keeps the graph on your Mac. OpenAI only sees the text of each extraction call.</p></div>
+          <div class="opts">
+            <div class="opt">
+              <h4>Self-hosted Graphiti + OpenAI <span class="rec">Chosen</span></h4>
+              <p>Graphiti is the open-source engine behind Zep (Apache 2.0, v0.31 from October 2026). It runs on FalkorDB next to the brain and uses OpenAI for extraction and embeddings, its default and best-tested setup.</p>
+              <ul>
+                <li>Same core model: episodes, entities, dated facts, custom entity and edge types, hybrid search</li>
+                <li>The stored graph never leaves your Mac</li>
+                <li>OpenAI sees labeled text, never addresses or live balances</li>
+                <li>Moving extraction to NEAR AI or a local model later is a configuration change</li>
+              </ul>
+            </div>
+            <div class="opt">
+              <h4>Zep Cloud <span class="notused">Not used</span></h4>
+              <p>Managed and quickest to start (v4 API, October 2026), with a free tier of 10k credits a month. But your goals, wallet roles and decisions would sit on Zep's servers in readable form.</p>
+              <ul>
+                <li>Its terms grant Zep a license to use customer data to train AI models, unless an enterprise contract or DPA overrides it</li>
+                <li>Self-hosted Community Edition was discontinued in 2025; running in your own cloud is enterprise-only</li>
+              </ul>
+            </div>
+          </div>
+          <p class="choice-src">Sources, checked 12 Nov 2026: <a href="https://github.com/getzep/graphiti">Graphiti repo</a> · <a href="https://www.getzep.com/legal/terms">Zep terms</a> · <a href="https://www.getzep.com/legal/subprocessors/">Zep subprocessors</a> · <a href="https://www.getzep.com/blog/announcing-a-new-direction-for-zeps-open-source-strategy/">Community Edition notice</a></p>
+        </div>
+      </section>
+
+      <!-- ===================== TALK ===================== -->
+      <section id="talk">
+        <p class="eyebrow">Change 2 · The menu-bar assistant</p>
+        <h2>Talking to it</h2>
+        <p class="lede">It works like Siri on the Mac. A small icon sits at the top right. Click it, or press a hotkey and speak, and a panel drops down. When you're done, it gets out of the way.</p>
+
+        <div class="anat">
+          <div>
+            <h4>The icon tells you the state</h4>
+            <div class="states">
+              <span class="state st-ok"><i><svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 19.5 5.5V11c0 4.9-3.2 8.4-7.5 10-4.3-1.6-7.5-5.1-7.5-10V5.5Z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></svg></i>All good</span>
+              <span class="state st-att"><i><svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 19.5 5.5V11c0 4.9-3.2 8.4-7.5 10-4.3-1.6-7.5-5.1-7.5-10V5.5Z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></svg></i>Needs you</span>
+              <span class="state st-deg"><i><svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 19.5 5.5V11c0 4.9-3.2 8.4-7.5 10-4.3-1.6-7.5-5.1-7.5-10V5.5Z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><path d="M4 3 20 21" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></i>Can't refresh data</span>
+            </div>
+            <p>You know whether anything needs attention without opening it.</p>
+          </div>
+          <div>
+            <h4>Three ways to summon it</h4>
+            <div class="summon">
+              <div><b>Click</b>the icon in the menu bar</div>
+              <div><b><kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>Space</kbd></b>speak; it sends when you pause</div>
+              <div><b>Type</b>once the panel is open, for meetings</div>
+            </div>
+            <p>Since Sequoia, macOS blocks global shortcuts that use only ⌥ or ⇧, so the default includes ⌘. You can change it.</p>
+          </div>
+          <div>
+            <h4>A panel that stays out of your way</h4>
+            <p>A Spotlight-style floating panel drops down under the icon and stays above your windows without taking focus from your work. Esc or a click outside closes it.</p>
+          </div>
+          <div>
+            <h4>Answers you can hear and see</h4>
+            <p>One or two spoken sentences, plus cards: a position card with a health gauge, a proposal card with before → after, an alert card with what changed. Each answer carries a badge naming the NEAR AI model and its attestation time.</p>
+          </div>
+          <div>
+            <h4>Seed-phrase tripwire</h4>
+            <p>If you paste or say something that looks like a seed phrase or private key, it never leaves the Mac. Nierwall refuses to use it and tells you to move those funds to a fresh wallet.</p>
+          </div>
+          <div>
+            <h4>Review and sign, from the panel</h4>
+            <p>A proposal card opens a review sheet with each step. <em>Send to wallet</em> opens a local signing page in your browser: Rabby or MetaMask for Base, your NEAR wallet through NEAR Connect.</p>
+          </div>
+        </div>
+
+        <div class="sub-h">
+          <p class="eyebrow">The voice path</p>
+          <h3>Your voice never leaves the Mac</h3>
+        </div>
+        <div class="pipe">
+          <div class="local"><span class="where"><span class="chip c-mac">Mac</span></span><b>Press the hotkey</b><span class="d">The mic is live only while you speak.</span></div>
+          <div class="local"><span class="where"><span class="chip c-mac">Mac</span></span><b>Speech to text</b><span class="d">Apple's SpeechAnalyzer, on device, about 1.5 to 2 seconds after you stop. Taught words like Rhea, Aave and USDC.</span></div>
+          <div><span class="where"><span class="chip c-brain">Brain</span><span class="chip c-near">NEAR AI</span></span><b>Agent</b><span class="d">Graph and live numbers locally. A NEAR AI TEE model writes the reply.</span></div>
+          <div class="local"><span class="where"><span class="chip c-mac">Mac</span></span><b>Text to speech</b><span class="d">An on-device system voice reads the short answer.</span></div>
+          <div class="local"><span class="where"><span class="chip c-mac">Mac</span></span><b>Cards</b><span class="d">Details stay on screen; spoken answers stay short.</span></div>
+        </div>
+        <p class="pipe-cap">Audio never leaves the device. The brain gets a transcript, the same as typing. A NEAR AI TEE model writes the reply, and the memory update goes to OpenAI; both see labels instead of addresses.</p>
+
+        <div class="sub-h">
+          <p class="eyebrow">Examples</p>
+          <h3>What you can say</h3>
+        </div>
+        <div class="say-grid">
+          <div class="say-col"><h4>Ask</h4><ul><li>How's my Rhea loan?</li><li>What happens if NEAR drops 20%?</li><li>Why did you alert me this morning?</li><li>Where is all my USDC right now?</li></ul></div>
+          <div class="say-col"><h4>Teach</h4><ul><li>My NEAR wallet is long-term. Only use it to avoid liquidation.</li><li>I'd rather repay than add more collateral.</li><li>Always keep 3,000 USDC in Cash.</li><li>I'm saving for a house in March.</li></ul></div>
+          <div class="say-col"><h4>Act</h4><ul><li>Get my Rhea health back to 1.8.</li><li>Find the cheapest way to fix the Aave loan.</li><li>Snooze the Aave alert until tomorrow.</li></ul></div>
+          <div class="say-col"><h4>Control</h4><ul><li>Quiet until 8 am.</li><li>Only critical alerts this weekend.</li><li>What do you know about my limits?</li><li>Forget what I said about Aave.</li></ul></div>
+        </div>
+
+        <div class="sub-h">
+          <p class="eyebrow">Other surfaces</p>
+          <h3>Same brain, same memory, wherever you are</h3>
+        </div>
+        <div class="surfaces">
+          <div class="surf"><h4>Mac notifications</h4><p>When an alert arrives and you're at the Mac. The app posts them itself, so no push service sees the content.</p></div>
+          <div class="surf"><h4>Telegram</h4><p>When you're away. It shares the same memory, so "why?" or "snooze 2h" works there, and the Mac panel knows what you already saw. Telegram can read bot messages, so you choose the detail level.</p></div>
+          <div class="surf"><h4>Siri, Shortcuts, Spotlight <span class="opt-tag">stretch goal</span></h4><p>App Intents let Spotlight or a Shortcut run Nierwall today. Siri's new custom app actions are in developer preview on the macOS 27.3 beta, so a development build could answer "Ask Nierwall how my loans are". Requests made through Siri pass through Apple.</p></div>
+          <div class="surf"><h4>Desktop widget <span class="opt-tag">after the hackathon</span></h4><p>Health factors and overall status at a glance on the desktop or in Notification Center.</p></div>
+        </div>
+      </section>
+
+      <!-- ===================== PRIVACY ===================== -->
+      <section id="privacy">
+        <p class="eyebrow">Privacy</p>
+        <h2>Who can see what</h2>
+        <p class="lede">Your chain activity is public. What Nierwall protects is the link between your wallets, your intentions, and your full financial picture.</p>
+
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th scope="col">Party</th><th scope="col">Which wallets are yours</th><th scope="col">Your goals and limits</th><th scope="col">Positions and balances</th><th scope="col">Your voice</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">Your Mac (app + brain)</th><td><i class="dot d-y"></i>Yes</td><td><i class="dot d-y"></i>Yes</td><td><i class="dot d-y"></i>Yes</td><td><i class="dot d-y"></i>Yes, on device</td></tr>
+              <tr><th scope="row">NEAR AI Cloud</th><td class="n"><i class="dot d-n"></i>No, labels only</td><td><i class="dot d-p"></i>In prompts, inside TEEs</td><td><i class="dot d-p"></i>Figures in prompts, inside TEEs</td><td class="n"><i class="dot d-n"></i>No</td></tr>
+              <tr><th scope="row">OpenAI API (memory)</th><td class="n"><i class="dot d-n"></i>No, labels only</td><td><i class="dot d-p"></i>Yes, as labeled text to extract facts</td><td><i class="dot d-p"></i>Amounts in event summaries</td><td class="n"><i class="dot d-n"></i>No</td></tr>
+              <tr><th scope="row">NEAR Intents (1Click)</th><td><i class="dot d-p"></i>The two addresses in a fix you approve</td><td class="n"><i class="dot d-n"></i>No</td><td><i class="dot d-p"></i>That one transfer</td><td class="n"><i class="dot d-n"></i>No</td></tr>
+              <tr><th scope="row">Chain-data providers</th><td><i class="dot d-p"></i>Each address they're asked about</td><td class="n"><i class="dot d-n"></i>No</td><td><i class="dot d-p"></i>Public chain data</td><td class="n"><i class="dot d-n"></i>No</td></tr>
+              <tr><th scope="row">Telegram</th><td class="n"><i class="dot d-n"></i>No</td><td class="n"><i class="dot d-n"></i>No</td><td><i class="dot d-p"></i>What your alert detail level shows</td><td class="n"><i class="dot d-n"></i>No</td></tr>
+              <tr><th scope="row">Apple</th><td class="n"><i class="dot d-n"></i>No</td><td class="n"><i class="dot d-n"></i>No</td><td class="n"><i class="dot d-n"></i>No</td><td class="n"><i class="dot d-n"></i>No, speech stays on device</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="tbl-note">Chain-data providers are a NEAR RPC, the Aave API and a Base RPC. Because the brain runs on your own Mac, no hosting company can read your memory or wallets.</p>
+
+        <div class="limits">
+          <p><b>Providers can guess links.</b> If one machine asks about all your addresses, an RPC provider can guess they belong together. Later options: spread queries across providers, add jitter, or run your own node.</p>
+          <p><b>A cross-chain fix links two addresses.</b> The Intents deposit and delivery connect your Base and NEAR addresses publicly. The review sheet says so before you sign.</p>
+          <p><b>A TEE narrows trust.</b> It takes the host out of the picture, but bugs inside the attested software still matter. On 9 Nov 2026 NEAR AI <a href="https://near.ai/blog/security-incident-report-sglang-vulnerability">disclosed</a> an inference-engine bug on one server that could have exposed requests, including confidential ones.</p>
+          <p><b>Memory building goes to OpenAI.</b> Graphiti sends the labeled text of your messages and events to OpenAI to extract facts, with no addresses and no live balances. The privacy panel says so, and moving it to NEAR AI later is a configuration change.</p>
+          <p><b>Telegram isn't end-to-end encrypted for bots.</b> Pick generic, actionable or detailed alerts. Addresses and totals never go there.</p>
+          <p><b>Siri requests go through Apple.</b> The core voice path doesn't use Siri. Only the optional shortcut does.</p>
+        </div>
+
+        <div class="rails">
+          <h3>Guardrails fixed in code</h3>
+          <ol>
+            <li>No keys or seed phrases, ever. Pasted secrets never leave the Mac.</li>
+            <li>Nothing signs except your wallets, after you review.</li>
+            <li>The model never computes money. It explains numbers that code computed.</li>
+            <li>Stale or missing data shows as unknown, never as safe.</li>
+            <li>Every Intents quote is checked: recipient is yours, minimum output, expiry.</li>
+            <li>Telegram buttons open, snooze or explain. They never trade.</li>
+            <li>The chat model is attested before any prompt is sent.</li>
+            <li>The graph can change what Nierwall watches and how it talks, never what it's allowed to do.</li>
+          </ol>
+        </div>
+      </section>
+
+      <!-- ===================== RISKS ===================== -->
+      <section id="risks">
+        <p class="eyebrow">Risks</p>
+        <h2>Risks to keep in view</h2>
+        <p class="lede">The first four come from the hackathon itself. The rest come from the two changes: a memory that learns from text, and an agent that recommends money moves.</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th scope="col">Risk</th><th scope="col">What could happen</th><th scope="col">How the plan handles it</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">Deadline</th><td>About two and a half days to build, record and submit.</td><td>One complete loop first, in the order below. Siri, the widget and Aave-side fixes are the first cuts.</td></tr>
+              <tr><th scope="row">Judges can't run a Mac app</th><td>AI screeners and judges may not have macOS 27 or Xcode.</td><td>A no-Mac path: <code>pnpm demo</code> in a terminal plus the Telegram bot, with "do X, see Y" steps in the README.</td></tr>
+              <tr><th scope="row">No Intents testnet</th><td>NEAR Intents runs on mainnet only.</td><td>Dry quotes in the demo. One tiny real transfer only with your approval.</td></tr>
+              <tr><th scope="row">A demo needs a price drop</th><td>Real loans rarely move on cue.</td><td>A clearly labeled scenario mode applies a price shock to real position data.</td></tr>
+              <tr><th scope="row">Memory text goes to OpenAI</th><td>A third party sees your preferences and decisions, in labeled form.</td><td>No addresses or live numbers in the graph, a clear line in the privacy panel, and a switch to NEAR AI or a local model after the hackathon.</td></tr>
+              <tr><th scope="row">Memory poisoning</th><td>Text an attacker controls, such as a token name or memo, lands in the graph and changes behavior.</td><td>Only your messages and Nierwall's own events are written. Watch changes need your yes. Hard limits live in code.</td></tr>
+              <tr><th scope="row">Misheard intent</th><td>The graph extracts "1.5" as 1.05, or attaches it to the wrong loan.</td><td>Every watch is read back in plain words before it's active. The memory view lets you fix facts.</td></tr>
+              <tr><th scope="row">Model routing drift</th><td>A model name quietly routes to a different provider, such as a third-party TEE or a proxied model.</td><td>Pin NEAR-hosted models with aliasing off, check attestation per session, verify response signatures.</td></tr>
+              <tr><th scope="row">Mac goes offline</th><td>A power cut, a closed lid, an update restart or lost Wi-Fi stops all checks.</td><td>Never-sleep settings, services that restart themselves, and an offline alarm on Telegram (proposed). The README says so plainly.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ===================== BUILD ===================== -->
+      <section id="build">
+        <p class="eyebrow">Build plan</p>
+        <h2>Three days, one complete loop</h2>
+        <p class="lede">Each day ends with something that works on real data. The order protects the demo: the loop works in a terminal before the Mac app exists, so a late problem never leaves us with nothing to show.</p>
+        <ol class="ms">
+          <li class="m"><div class="m-n">Day 1<span>Thu 12 Nov</span></div><div><h3>The loop works in a terminal</h3><ul>
+            <li>Repo with MIT license; TypeScript brain; NEAR AI client with the attestation check, confirming a TEE model that does tool calls and JSON</li>
+            <li>Graphiti and FalkorDB in Docker, with OpenAI for extraction and embeddings (its default setup)</li>
+            <li>Rhea reader through Rhea's SDK, Aave V3 reader on Base, health math and fix simulation</li>
+            <li>Watch engine, scheduler and scenario mode; Telegram bot with one-time pairing and alert buttons</li>
+            <li>Always-on setup: services start at login and restart themselves; offline alarm (proposed)</li>
+          </ul><p class="done"><b>Done when</b>running <code>pnpm demo</code> shows both positions from live data, a scenario shock trips the Rhea watch, and exactly one Telegram alert arrives with two ranked fixes.</p></div></li>
+          <li class="m"><div class="m-n">Day 2<span>Fri 13 Nov</span></div><div><h3>It talks and it fixes</h3><ul>
+            <li>Mac app: status item and panel, hotkey, on-device speech in and out, cards, notifications, attestation badge, memory view</li>
+            <li>Agent tools wired to the app; intake chat; watches built from the graph with confirmation</li>
+            <li>NEAR Intents 1Click: dry quotes with recipient, minimum-output and expiry checks</li>
+            <li>Review sheet and local signing page: EIP-6963 for Rabby or MetaMask, NEAR Connect for NEAR wallets</li>
+          </ul><p class="done"><b>Done when</b>you ask by voice and hear a correct answer with a live card, and Review A shows a real dry quote with both signing steps.</p></div></li>
+          <li class="m m-last"><div class="m-n">Day 3<span>Sat 14 Nov · 23:59 UTC</span></div><div><h3>Ship it</h3><ul>
+            <li>README for humans and AI screeners: problem, product, NEAR's role, "do X, see Y" steps, the no-Mac path, and the libraries and AI-written code used</li>
+            <li>Optional: one tiny real Base → NEAR transfer and Rhea repay, only with your approval</li>
+            <li>Demo video of one complete moment, an X post draft, the repo made public (by you), and the submission payload for your yes</li>
+          </ul><p class="done"><b>Done when</b>the submission returns 201 before 23:59 UTC.</p></div></li>
+        </ol>
+
+        <div class="after">
+          <h4>After the hackathon</h4>
+          <ul>
+            <li>Optional: move the brain to a Phala TEE server if it should run without your Mac</li>
+            <li>Approving fixes from your phone</li>
+            <li>More protocols: Morpho, Uniswap LPs, Hyperliquid, Solana lending</li>
+            <li>Token-approval and scam checks</li>
+            <li>Memory building on NEAR AI or a local model</li>
+            <li>Desktop widget and Siri actions once they leave beta</li>
+            <li>Multi-user, if Nierwall becomes a product</li>
+          </ul>
+          <p>Hackathon cost: NEAR AI credits (the $10 NEAR Builders credit should cover development), a few dollars of OpenAI usage for memory, and a few dollars of mainnet fees if you approve a real test. Running 24/7 on your Mac adds nothing beyond electricity.</p>
+        </div>
+
+        <div class="sub-h">
+          <p class="eyebrow">Shipping</p>
+          <h3>Who does what for the submission</h3>
+          <p>From the hackathon rules. I never publish, post, sign or submit without your explicit yes.</p>
+        </div>
+        <div class="ship">
+          <div><h4>I prepare</h4><ul>
+            <li>README written for humans and AI screeners</li>
+            <li>MIT LICENSE and a <code>.env.example</code> with no secrets</li>
+            <li>A note on code from before 1 Nov, kept as baseline</li>
+            <li>Demo script and an X post draft tagging @NEARProtocol and #NEARHackathon</li>
+            <li>The submission JSON, printed in full for your review</li>
+          </ul></div>
+          <div><h4>You do</h4><ul>
+            <li>Get NEAR AI credits: $10 through NEAR Builders (a separate API key) or buy at cloud.near.ai</li>
+            <li>Create an OpenAI API key for memory building</li>
+            <li>Make the repo public before 14 Nov, 23:59 UTC</li>
+            <li>Record the demo and publish the X post</li>
+            <li>Create the mainnet NEAR account for the payout</li>
+            <li>Confirm the exact payload; there is one submission per project</li>
+          </ul></div>
+        </div>
+        <div class="fields">
+          <h4>Fields you decide</h4>
+          <ul>
+            <li>Project name</li><li>Team lead's name</li><li>Contact email</li><li>Team size</li><li>Tracks: privacy, security, open</li><li>NEAR payout account</li><li>Repo link</li><li>Demo post link</li><li>Description (20–2,000 characters)</li><li>Consent to the contact notice</li>
+          </ul>
+          <p>Mistakes after submitting go through the request-changes page, never a second submission. Keep the repo public through judging. A hosted demo is a plus if it stays up until 18 Nov, ideally 25 Nov.</p>
+        </div>
+      </section>
+
+      <!-- ===================== DECISIONS ===================== -->
+      <section id="decide">
+        <p class="eyebrow">Your call</p>
+        <h2>Decisions</h2>
+        <p class="lede">The big ones are settled. A few small ones remain, and I need them before writing code that touches your wallets.</p>
+        <ul class="decided">
+          <li><b>Protocols</b><span>Rhea on NEAR and Aave V3. Morpho comes after the hackathon.</span></li>
+          <li><b>Fixes</b><span>NEAR Intents for cross-chain sourcing. You sign every step.</span></li>
+          <li><b>Hosting</b><span>Your Mac, always on: plugged in, never sleeping, alerts 24/7 through Telegram.</span></li>
+          <li><b>Tracks</b><span>Privacy &amp; Private AI, AI Security &amp; Defense, Open Innovation.</span></li>
+          <li><b>Memory</b><span>Self-hosted Graphiti on your Mac, with OpenAI for extraction and embeddings.</span></li>
+          <li><b>Assistant</b><span>NEAR-hosted TEE models, called through NEAR's inference SDK.</span></li>
+        </ul>
+        <div class="dec">
+          <div class="d"><h3>Which wallets do you sign with?</h3><p class="pick"><b>Pick</b>Rabby for Base, and HOT or Meteor for NEAR.</p><p class="alt">Tell me what you actually use, so the signing page fits it.</p></div>
+          <div class="d"><h3>Real positions for the demo?</h3><p class="pick"><b>Pick</b>Small real loans on Rhea and Aave, with scenario mode for the drop.</p><p class="alt">Other option: read-only real addresses with no loans of your own, plus scenario mode.</p></div>
+          <div class="d"><h3>Which chain for Aave?</h3><p class="pick"><b>Pick</b>Base: cheap gas, and NEAR Intents supports it.</p><p class="alt">Or wherever your Aave loan already sits.</p></div>
+          <div class="d"><h3>Solo or a team?</h3><p class="pick"><b>Pick</b>Tell me who's building.</p><p class="alt">It sets the cut list, and the submission asks for team size.</p></div>
+          <div class="d"><h3>How much detail goes to Telegram?</h3><p class="pick"><b>Pick</b>Actionable: protocol, risk, options and wallet nicknames, with no addresses or totals.</p><p class="alt">Other options: generic ("something needs you") or detailed (more numbers).</p></div>
+          <div class="d"><h3>Is ⌘⇧Space the right hotkey?</h3><p class="pick"><b>Pick</b>Yes, and it can be changed in settings.</p><p class="alt">No always-listening wake word: it costs privacy and battery.</p></div>
+        </div>
+      </section>
+
+      <!-- ===================== DIFF ===================== -->
+      <section id="diff">
+        <p class="eyebrow">Reference</p>
+        <h2>Codex plan vs this plan</h2>
+        <p class="lede">Nothing from the Codex spec is lost. Its protocol specs, schemas and test lists stay valid as the reference for each piece.</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th scope="col">Area</th><th scope="col">Codex v2.1</th><th scope="col">This plan</th><th scope="col">Why</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">Rules</th><td>Fixed catalog of 12 rule types, compiled to a rule tree</td><td>Zep context graph. Measurable facts become confirmed watches; the metric library stays in code</td><td>Personal, changes over time, remembers why</td></tr>
+              <tr><th scope="row">Main interface</th><td>Web dashboard and browser extension</td><td>Mac menu-bar app with voice and text</td><td>Siri-like, and the signed native client the Codex plan itself preferred for privacy</td></tr>
+              <tr><th scope="row">First protocols</th><td>Aave V3 and Morpho Blue</td><td>Rhea on NEAR and Aave V3 on Base</td><td>NEAR-native, a hackathon partner, and still cross-chain</td></tr>
+              <tr><th scope="row">Fixes</th><td>Same-chain supply or repay; Intents as a late optional phase</td><td>Cross-chain fixes through NEAR Intents from day one; you sign</td><td>Funds rarely sit on the chain where the loan is</td></tr>
+              <tr><th scope="row">Where the brain runs</th><td>Attested TEE worker from the start</td><td>Your own Mac, kept on 24/7</td><td>No hosting company can read it, it costs nothing extra, and it fits the deadline</td></tr>
+              <tr><th scope="row">AI's role</th><td>Rule parser and explainer</td><td>Conversational agent with memory and tools: chat on NEAR AI, memory building on OpenAI</td><td>An assistant you talk to, not a form you fill in</td></tr>
+              <tr><th scope="row">Alerts</th><td>Telegram first, web push as fallback</td><td>Mac notifications at the Mac, Telegram when away</td><td>Local notifications reveal nothing to third parties</td></tr>
+              <tr><th scope="row">Audience</th><td>Multi-tenant SaaS with wallet partners</td><td>You first, with a product-ready architecture</td><td>Cuts most of the scope before daily use</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="lists">
+          <div><h4>Parked for later</h4><ul><li>TEE hosting and client-side attestation of our own code</li><li>Morpho, Uniswap, Hyperliquid, Solana</li><li>MetaMask Snap and browser extension</li><li>Wallet-partner verification SDK</li><li>Multi-tenant features, billing and quotas</li><li>Multi-device recovery</li><li>Capped auto-protect and other delegated execution</li></ul></div>
+          <div><h4>Kept as specified</h4><ul><li>Fixed-point money math and no double counting</li><li>Aave V3 adapter spec and tests</li><li>Stale data shows as unknown</li><li>Proposal rules: fresh simulation, expiry, re-check at review</li><li>Idempotent alerts, dedup and escalation</li><li>Telegram pairing rules; buttons never trade</li><li>No Shade Agent Framework (deprecated)</li></ul></div>
+        </div>
+
+        <div class="sub-h">
+          <p class="eyebrow">Tech stack</p>
+          <h3>What each piece is built with</h3>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th scope="col">Piece</th><th scope="col">Choice</th><th scope="col">Note</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">Mac app</th><td>Swift and SwiftUI in a non-activating floating panel, opened from a status-bar item</td><td>SwiftUI's MenuBarExtra can't be opened from code, which the hotkey needs</td></tr>
+              <tr><th scope="row">Hotkey</th><td>KeyboardShortcuts 3.1, default ⌘⇧Space</td><td>Includes macOS 27 fixes</td></tr>
+              <tr><th scope="row">Speech</th><td>SpeechAnalyzer for speech to text, AVSpeechSynthesizer for voice</td><td>Both on device</td></tr>
+              <tr><th scope="row">Brain</th><td>TypeScript: agent with tool calling, Rhea SDK, Aave API, viem, risk math</td><td>Runs on your Mac under Docker Compose</td></tr>
+              <tr><th scope="row">Memory</th><td>Graphiti 0.31 on FalkorDB, using OpenAI for extraction, on a private Docker network</td><td>No official TypeScript client, so the brain calls Graphiti's own server; telemetry off</td></tr>
+              <tr><th scope="row">Assistant model</th><td>NEAR AI Cloud through <code>@nearai/inference-sdk</code>, GLM-5.3-Flash or Qwen3.6</td><td>Attestation checked; NEAR-hosted models, not the ones NEAR only proxies</td></tr>
+              <tr><th scope="row">Embeddings</th><td>OpenAI embeddings and reranker, Graphiti's defaults</td><td>NEAR AI has embedding and rerank models if we switch later</td></tr>
+              <tr><th scope="row">Cross-chain fixes</th><td>NEAR Intents 1Click API</td><td>Dry quotes first; a deposit address only once you confirm</td></tr>
+              <tr><th scope="row">Numbers store</th><td>SQLite on the Mac</td><td>Snapshots, incidents, proposals, alert outbox</td></tr>
+              <tr><th scope="row">Alerts</th><td>macOS local notifications, Telegram Bot API</td><td>Telegram only when you're away</td></tr>
+              <tr><th scope="row">Signing</th><td>Local signing page: EIP-6963 for Rabby or MetaMask, NEAR Connect for NEAR wallets</td><td>WalletConnect's Swift SDK is iOS-only</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="footer">
+          <h3>Next step</h3>
+          <p>Answer the small open questions above: your wallets, real or read-only positions, the Aave chain, and solo or team. Then I'll scaffold the repo and start with the Rhea reader and the NEAR AI client, since everything else depends on those two working.</p>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<script>
+(function(){
+  try{
+    var links=[].slice.call(document.querySelectorAll('.toc a'));
+    if(!links.length||!('IntersectionObserver' in window))return;
+    var byId={};
+    links.forEach(function(a){byId[a.getAttribute('href').slice(1)]=a;});
+    var obs=new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        if(!e.isIntersecting)return;
+        links.forEach(function(l){l.classList.remove('active');});
+        var a=byId[e.target.id]; if(a)a.classList.add('active');
+      });
+    },{rootMargin:'-25% 0px -65% 0px'});
+    document.querySelectorAll('main section[id]').forEach(function(s){obs.observe(s);});
+  }catch(err){}
+})();
+</script>

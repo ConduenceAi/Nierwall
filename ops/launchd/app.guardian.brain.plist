@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>app.guardian.brain</string>
+  <key>ProgramArguments</key>
+  <array><string>/bin/zsh</string><string>-lc</string><string>cd "__ROOT__/apps/brain" &amp;&amp; exec ./node_modules/.bin/tsx src/index.ts</string></array>
+  <key>EnvironmentVariables</key><dict><key>NODE_OPTIONS</key><string>--disable-warning=ExperimentalWarning</string></dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>StandardOutPath</key><string>__LOGS__/brain.log</string>
+  <key>StandardErrorPath</key><string>__LOGS__/brain.log</string>
+</dict>
+</plist>
