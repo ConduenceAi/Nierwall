@@ -1,0 +1,30 @@
+{
+  "name": "@guardian/snap",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Nierwall pre-sign checks for MetaMask: health-factor impact, risky approvals, quote mismatches.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ConduenceAi/Nierwall.git"
+  },
+  "main": "./dist/bundle.js",
+  "files": [
+    "dist/",
+    "images/",
+    "snap.manifest.json"
+  ],
+  "scripts": {
+    "build": "mm-snap build",
+    "serve": "mm-snap serve",
+    "start": "mm-snap watch",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@metamask/snaps-sdk": "^12.1.0"
+  },
+  "devDependencies": {
+    "@metamask/snaps-cli": "^8.4.1",
+    "typescript": "^7.0.2"
+  }
+}

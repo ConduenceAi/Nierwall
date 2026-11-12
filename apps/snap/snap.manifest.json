@@ -1,0 +1,28 @@
+{
+  "version": "0.1.0",
+  "description": "Checks each transaction against your DeFi positions and limits before you sign: health-factor impact, risky approvals, quote mismatches.",
+  "proposedName": "Nierwall",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ConduenceAi/Nierwall.git"
+  },
+  "source": {
+    "shasum": "Zk5a+h5vs3Bdlw2Ibc3kHugVs2/tvXT7Y1NNaD0XxPA=",
+    "location": {
+      "npm": {
+        "filePath": "dist/bundle.js",
+        "iconPath": "images/icon.svg",
+        "packageName": "@guardian/snap",
+        "registry": "https://registry.npmjs.org/"
+      }
+    }
+  },
+  "initialPermissions": {
+    "endowment:transaction-insight": {
+      "allowTransactionOrigin": true
+    },
+    "endowment:network-access": {}
+  },
+  "platformVersion": "12.1.0",
+  "manifestVersion": "0.1"
+}
