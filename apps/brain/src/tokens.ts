@@ -18,7 +18,7 @@ export interface TokenInfo {
   priceUsd: number | null;
 }
 
-interface RawToken {
+export interface RawToken {
   assetId: string;
   blockchain: string;
   symbol: string;
@@ -28,24 +28,30 @@ interface RawToken {
   price?: number | string | null;
 }
 
-let cache: { at: number; tokens: TokenInfo[] } | null = null;
+let cache: { at: number; raw: RawToken[]; tokens: TokenInfo[] } | null = null;
 
-/** Tokens on Base and NEAR that NEAR Intents can swap, with prices. Cached for 5 minutes. */
-export async function tokenList(): Promise<TokenInfo[]> {
-  if (cache && Date.now() - cache.at < 5 * 60_000) return cache.tokens;
+/** The whole NEAR Intents token list, every chain, with prices. Cached for 5 minutes. */
+export async function intentsTokens(): Promise<RawToken[]> {
+  if (cache && Date.now() - cache.at < 5 * 60_000) return cache.raw;
   try {
     const res = await fetch("https://1click.chaindefuser.com/v0/tokens", { signal: AbortSignal.timeout(20_000) });
     if (!res.ok) throw new Error(`1Click tokens ${res.status}`);
-    const tokens = parseTokenList((await res.json()) as RawToken[]);
-    cache = { at: Date.now(), tokens };
-    return tokens;
+    const raw = (await res.json()) as RawToken[];
+    cache = { at: Date.now(), raw, tokens: parseTokenList(raw) };
+    return raw;
   } catch (e) {
     if (cache) {
       log.warn("token list refresh failed; using the cached one", { err: String(e).slice(0, 120) });
-      return cache.tokens;
+      return cache.raw;
     }
     throw e;
   }
+}
+
+/** Tokens on Base and NEAR that NEAR Intents can swap, with prices. */
+export async function tokenList(): Promise<TokenInfo[]> {
+  await intentsTokens();
+  return cache!.tokens;
 }
 
 export function parseTokenList(raw: RawToken[]): TokenInfo[] {

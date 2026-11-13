@@ -2,7 +2,9 @@ import { decodeFunctionData, formatUnits, getAddress, isAddress, maxUint256, par
 import type { Brain } from "../brain.js";
 import { ADDRESSES } from "../config.js";
 import { poolAbi, readAave, simulateAave, type AaveAccountDetail, type AaveAction } from "../protocols/aave.js";
+import { evmChain } from "../chains.js";
 import { KNOWN_SPENDERS, txEffects } from "./effects.js";
+import { analyzeNear } from "./near.js";
 
 export interface SnapFinding {
   severity: "info" | "warning" | "critical";
@@ -39,26 +41,24 @@ function chainNumber(chainId: string): number | null {
   return m[1]!.startsWith("0x") ? parseInt(m[1]!, 16) : Number(m[1]);
 }
 
-function verdict(findings: SnapFinding[], fallback: string): SnapAnalysis {
+export function verdict(findings: SnapFinding[], fallback: string): SnapAnalysis {
   const status = findings.some((f) => f.severity === "critical") ? "critical" : findings.some((f) => f.severity === "warning") ? "warn" : findings.length ? "pass" : "unknown";
   const top = findings.find((f) => f.severity === "critical") ?? findings.find((f) => f.severity === "warning") ?? findings[0];
   return { status, summary: top?.title ?? fallback, findings };
 }
 
 /**
- * Pre-sign analysis for the MetaMask Snap. Deterministic: decodes the call, simulates its effect on watched
- * positions and rules, and never claims "safe" for something it can't decode.
+ * Pre-sign analysis for the MetaMask Snap, on every network MetaMask sends to. Deterministic: decodes the call,
+ * simulates it where the network's node allows, checks the effect on positions and rules, and never claims
+ * "safe" for something it can't check.
  */
 export async function analyzeTx(brain: Brain, input: SnapTxInput, pending: PendingDeposit[] = []): Promise<SnapAnalysis> {
   const chain = chainNumber(input.chainId);
   const tx = input.transaction;
   const findings: SnapFinding[] = [];
-  if (chain === 397) {
-    return { status: "unknown", summary: "NEAR transaction via MetaMask", findings: [{ severity: "info", title: "Nierwall can't decode NEAR transactions in MetaMask yet", detail: "Check it in your NEAR wallet's own view. This is not a safety verdict." }] };
-  }
-  if (chain !== 8453) {
-    return { status: "unknown", summary: "Unsupported network", findings: [{ severity: "info", title: "Nierwall only checks Base and NEAR for now", detail: "No analysis for this network. This is not a safety verdict." }] };
-  }
+  if (chain === 397) return analyzeNear(brain, input, pending);
+  const evm = chain != null ? evmChain(chain) : undefined;
+  const onBase = chain === 8453;
   const from = tx.from && isAddress(tx.from) ? getAddress(tx.from) : null;
   const to = tx.to && isAddress(tx.to) ? getAddress(tx.to) : null;
   const data = (tx.data ?? "0x") as `0x${string}`;
@@ -66,8 +66,8 @@ export async function analyzeTx(brain: Brain, input: SnapTxInput, pending: Pendi
   const own = (addr: string) => ownWallets.find((w) => w.address.toLowerCase() === addr.toLowerCase());
   const fromLabel = from ? own(from)?.label ?? null : null;
 
-  // ---- Aave V3 pool calls: simulate the health impact ----
-  if (to && to.toLowerCase() === ADDRESSES.base.aavePool.toLowerCase() && from) {
+  // ---- Aave V3 pool calls on Base: simulate the health impact ----
+  if (onBase && to && to.toLowerCase() === ADDRESSES.base.aavePool.toLowerCase() && from) {
     let decoded;
     try {
       decoded = decodeFunctionData({ abi: poolAbi, data });
@@ -131,7 +131,7 @@ export async function analyzeTx(brain: Brain, input: SnapTxInput, pending: Pendi
     }
     if (decoded?.functionName === "transfer") {
       const [recipient, amountRaw] = decoded.args as [string, bigint];
-      const isUsdc = to.toLowerCase() === ADDRESSES.base.usdc.toLowerCase();
+      const isUsdc = onBase && to.toLowerCase() === ADDRESSES.base.usdc.toLowerCase();
       const amount = isUsdc ? Number(formatUnits(amountRaw, 6)) : null;
       const match = pending.find((p) => p.depositAddress.toLowerCase() === recipient.toLowerCase());
       const mine = pending.find((p) => from && p.fromAddress.toLowerCase() === from.toLowerCase());
@@ -166,17 +166,24 @@ export async function analyzeTx(brain: Brain, input: SnapTxInput, pending: Pendi
   }
 
   // ---- Any call: simulate the exact transaction and check what it does to the user's money ----
-  let changes: SnapAnalysis["changes"];
-  if (from) {
-    const effects = await txEffects(brain, { from, to, data, value: tx.value }, what === "Contract call").catch(() => null);
+  const network = { label: "Network", value: evm?.name ?? `Chain ${chain ?? "unknown"}` };
+  let changes: NonNullable<SnapAnalysis["changes"]> = [network];
+  let simulated = false;
+  if (from && evm?.simulate) {
+    const effects = await txEffects(brain, evm, { from, to, data, value: tx.value }, what === "Contract call").catch(() => null);
     if (effects) {
+      simulated = true;
       findings.push(...effects.findings);
-      changes = effects.rows.length ? effects.rows : undefined;
+      changes = [network, ...effects.rows];
     }
   }
-  if (!findings.length && !changes) {
-    return { status: "unknown", summary: "Nierwall can't decode this transaction", findings: [{ severity: "info", title: "No analysis available", detail: "Nierwall couldn't simulate or recognize this call. This is not a safety verdict." }] };
+  if (!findings.length && !simulated) {
+    const why = !evm ? "Nierwall doesn't know this network yet" : !evm.simulate ? `${evm.name}'s node can't simulate transactions` : "the simulation didn't answer";
+    return { status: "unknown", summary: "Nierwall couldn't check this transaction", findings: [{ severity: "info", title: "No analysis available", detail: `It isn't a plain transfer or approval, and ${why}. This is not a safety verdict.` }], changes };
   }
-  if (!findings.length) findings.push({ severity: "info", title: "Simulated: nothing unusual", detail: "Checked against your positions, limits and portfolio mix." });
+  if (!simulated && evm && !evm.simulate) findings.push({ severity: "info", title: `Decoded only`, detail: `${evm.name}'s node can't simulate transactions, so Nierwall checked the call itself, not its full effect.` });
+  if (simulated && findings.every((f) => f.severity === "info")) {
+    findings.push({ severity: "info", title: "Simulated: nothing unusual", detail: "Checked against your positions, limits and portfolio mix." });
+  }
   return { ...verdict(findings, what), changes };
 }

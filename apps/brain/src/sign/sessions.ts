@@ -110,13 +110,13 @@ export class SignSessions {
 
   constructor(private brain: Brain, private onUpdate: (s: SignSession) => void) {}
 
-  /** Open NEAR Intents deposits on Base, so the Snap can check transfers against them. */
+  /** Open NEAR Intents deposits (Base and NEAR), so the Snap can check transfers against them. */
   pendingDeposits() {
     const out: Array<{ depositAddress: string; fromAddress: string; amountRaw: string }> = [];
     for (const s of this.sessions.values()) {
       if (s.done || Date.parse(s.expiresAt) < Date.now()) continue;
       for (const step of s.steps) {
-        if (step.kind === "evm" && step.depositAddress && step.expectedSigner && step.amountRaw && step.state !== "done") {
+        if ((step.kind === "evm" || step.kind === "near") && step.depositAddress && step.expectedSigner && step.amountRaw && step.state !== "done") {
           out.push({ depositAddress: step.depositAddress, fromAddress: step.expectedSigner, amountRaw: step.amountRaw });
         }
       }

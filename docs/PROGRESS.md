@@ -17,6 +17,7 @@ Last updated: 2026-11-13 (afternoon, IST). Deadline: 2026-11-14 23:59 UTC. Judgi
 | 11 | Holdings, token watches, portfolio mix | Done, live-tested | Every token in every wallet (Base batched read, NEAR via FastNEAR); price watches for any CoinGecko coin; mix targets as watches |
 | 12 | Advisor (AI plans, Mac checks) | Checker live-tested, AI untested | Plans replayed against balances, loans and live quotes; review sessions built for swaps, moves, Aave and Rhea. AI sets floors, targets, alert severity and cost limits. Needs `NEAR_AI_API_KEY` to try the AI part |
 | 13 | Snap: transaction simulation | Done, live-tested on Base | "You send / you get", mix targets with alternatives, bad rates, hidden approvals, failing transactions |
+| 14 | Snap on every network | Done, live-tested on Ethereum, Arbitrum, Polygon, Avalanche | Simulation on 13 EVM networks, decoding elsewhere; NEAR transactions from MetaMask (NEP-518) decoded, including Rhea health and full-access keys |
 
 ## Before submitting
 
@@ -30,6 +31,9 @@ Last updated: 2026-11-13 (afternoon, IST). Deadline: 2026-11-14 23:59 UTC. Judgi
 
 ## Log
 
+- **2026-11-13 (evening)** The Snap now checks every transaction MetaMask sends, on any network: simulation where
+  the network's node supports it (13 EVM networks), decoding elsewhere, tokens priced from the NEAR Intents list,
+  then CoinGecko. NEAR transactions from MetaMask are decoded per NEP-518. 45 tests pass.
 - **2026-11-13 (afternoon)** Advisor: the TEE planning model proposes plans and the Mac checks every step with
   live NEAR Intents quotes before you see them. The AI now proposes loan floors and repair targets from 90-day
   volatility, judges alert severity (with hard rails), and sets each plan's cost limit. Answers stay on NEAR AI's

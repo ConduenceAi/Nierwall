@@ -1,26 +1,24 @@
-import { formatUnits, getAddress, maxUint256 } from "viem";
+import { formatUnits, maxUint256 } from "viem";
 import { allocationOf, assetClass, type AssetClass } from "../advisor/plans.js";
 import type { Brain } from "../brain.js";
-import { ADDRESSES, env } from "../config.js";
+import type { EvmChain } from "../chains.js";
+import { ADDRESSES } from "../config.js";
 import type { Holding } from "../holdings.js";
-import { baseClient, erc20Abi } from "../protocols/aave.js";
-import { tokenList, type TokenInfo } from "../tokens.js";
 import type { Allocation, Watch } from "../types.js";
 import { CLASS_NAMES } from "../watches/engine.js";
 import type { SnapFinding } from "./analyze.js";
+import { NATIVE, resolveTokens, type TokenMeta } from "./pricing.js";
 
 const TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 const APPROVAL = "0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925";
 const APPROVAL_FOR_ALL = "0x17307eab39ab6107e8899845ad3d59bd9653f200f220920489ca2b5937696c31";
 
-/** Spenders users commonly approve on Base. Unknown is not "bad", just worth a look. */
+/** Spenders users commonly approve. Unknown is not "bad", just worth a look. */
 export const KNOWN_SPENDERS: Record<string, string> = {
+  "0x000000000022d473030f116ddee9f6b43ac78ba3": "Permit2 (Uniswap)", // same address on every chain
   [ADDRESSES.base.aavePool.toLowerCase()]: "Aave V3 Pool",
-  "0x000000000022d473030f116ddee9f6b43ac78ba3": "Permit2 (Uniswap)",
   "0x6ff5693b99212da76ad316178a184ab56d299b43": "Uniswap Universal Router",
 };
-/** Where eth_simulateV1 reports native ETH moves (ERC-7528). */
-const NATIVE = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
 export interface RawTransfer {
   token: string;
@@ -37,11 +35,11 @@ export interface RawApproval {
   amount: bigint | "all";
 }
 
-/** Runs the exact transaction on the latest Base block without sending it, and returns its token and ETH transfers. */
-export async function simulateTransfers(tx: { from: string; to: string | null; data: string; value?: string }): Promise<{ ok: true; reverted: boolean; transfers: RawTransfer[]; approvals: RawApproval[] } | { ok: false; reason: string }> {
+/** Runs the exact transaction on the network's latest block without sending it, and returns its transfers and approvals. */
+export async function simulateTransfers(rpc: string, tx: { from: string; to: string | null; data: string; value?: string }): Promise<{ ok: true; reverted: boolean; transfers: RawTransfer[]; approvals: RawApproval[] } | { ok: false; reason: string }> {
   const value = tx.value && BigInt(tx.value) > 0n ? `0x${BigInt(tx.value).toString(16)}` : undefined;
   const call = { from: tx.from, ...(tx.to ? { to: tx.to } : {}), data: tx.data, ...(value ? { value } : {}) };
-  const res = await fetch(env.BASE_RPC_URL, {
+  const res = await fetch(rpc, {
     method: "POST",
     headers: { "content-type": "application/json" },
     signal: AbortSignal.timeout(6000),
@@ -50,13 +48,15 @@ export async function simulateTransfers(tx: { from: string; to: string | null; d
   const j = (await res.json()) as { result?: Array<{ calls?: Array<{ status: string; logs?: Array<{ address: string; topics: string[]; data: string }> }> }>; error?: { message?: string } };
   const c = j.result?.[0]?.calls?.[0];
   if (j.error || !c) return { ok: false, reason: j.error?.message ?? "no simulation result" };
-  const transfers = (c.logs ?? [])
-    .filter((l) => l.topics[0] === TRANSFER && l.topics.length === 3) // ERC-20 and native; NFTs carry a 4th topic
-    .map((l) => ({ token: l.address.toLowerCase(), from: `0x${l.topics[1]!.slice(26)}`.toLowerCase(), to: `0x${l.topics[2]!.slice(26)}`.toLowerCase(), amount: BigInt(l.data === "0x" ? 0 : l.data) }));
   const addr = (topic: string) => `0x${topic.slice(26)}`.toLowerCase();
-  const approvals: RawApproval[] = (c.logs ?? []).flatMap((l): RawApproval[] => {
-    if (l.topics[0] === APPROVAL && l.topics.length === 3) return [{ token: l.address.toLowerCase(), owner: addr(l.topics[1]!), spender: addr(l.topics[2]!), amount: BigInt(l.data === "0x" ? 0 : l.data) }];
-    if (l.topics[0] === APPROVAL_FOR_ALL && l.topics.length === 3 && BigInt(l.data === "0x" ? 0 : l.data) === 1n) return [{ token: l.address.toLowerCase(), owner: addr(l.topics[1]!), spender: addr(l.topics[2]!), amount: "all" }];
+  const num = (data: string) => BigInt(data === "0x" ? 0 : data);
+  const logs = c.logs ?? [];
+  const transfers = logs
+    .filter((l) => l.topics[0] === TRANSFER && l.topics.length === 3) // ERC-20 and native; NFTs carry a 4th topic
+    .map((l) => ({ token: l.address.toLowerCase(), from: addr(l.topics[1]!), to: addr(l.topics[2]!), amount: num(l.data) }));
+  const approvals: RawApproval[] = logs.flatMap((l): RawApproval[] => {
+    if (l.topics[0] === APPROVAL && l.topics.length === 3) return [{ token: l.address.toLowerCase(), owner: addr(l.topics[1]!), spender: addr(l.topics[2]!), amount: num(l.data) }];
+    if (l.topics[0] === APPROVAL_FOR_ALL && l.topics.length === 3 && num(l.data) === 1n) return [{ token: l.address.toLowerCase(), owner: addr(l.topics[1]!), spender: addr(l.topics[2]!), amount: "all" }];
     return [];
   });
   return { ok: true, reverted: c.status !== "0x1", transfers, approvals };
@@ -68,10 +68,12 @@ export interface Change {
   amount: number;
   usd: number | null;
   cls: AssetClass;
+  /** "at least": the amount is a guaranteed minimum (e.g. a swap's minimum output). */
+  atLeast?: boolean;
 }
 
 /** What leaves and arrives across the user's wallets. Moves between their own wallets cancel out. */
-export function netChanges(transfers: RawTransfer[], own: Set<string>, tokens: TokenInfo[], meta: Map<string, { symbol: string; decimals: number }>): Change[] {
+export function netChanges(transfers: RawTransfer[], own: Set<string>, meta: Map<string, TokenMeta>): Change[] {
   const sums = new Map<string, bigint>();
   for (const t of transfers) {
     const out = own.has(t.from);
@@ -82,19 +84,17 @@ export function netChanges(transfers: RawTransfer[], own: Set<string>, tokens: T
   const out: Change[] = [];
   for (const [token, raw] of sums) {
     if (raw === 0n) continue;
-    const info = token === NATIVE ? tokens.find((x) => x.chain === "base" && !x.contract) : tokens.find((x) => x.chain === "base" && x.contract === token);
-    const m = info ?? meta.get(token);
-    const decimals = m?.decimals ?? 18;
+    const m = meta.get(token);
+    const amount = Number(formatUnits(raw, m?.decimals ?? 18));
     const symbol = m?.symbol ?? `token ${token.slice(0, 6)}…${token.slice(-4)}`;
-    const amount = Number(formatUnits(raw, decimals));
-    out.push({ symbol, amount, usd: info?.priceUsd != null ? amount * info.priceUsd : null, cls: info ? assetClass(symbol) : "other" });
+    out.push({ symbol, amount, usd: m?.priceUsd != null ? amount * m.priceUsd : null, cls: m ? assetClass(symbol) : "other" });
   }
   return out;
 }
 
 const fmtAmount = (x: number) => Math.abs(x).toLocaleString("en-US", { maximumFractionDigits: Math.abs(x) >= 1000 ? 0 : Math.abs(x) >= 1 ? 2 : 6 });
 const fmtUsd = (x: number) => `$${Math.abs(x).toLocaleString("en-US", { maximumFractionDigits: Math.abs(x) >= 100 ? 0 : 2 })}`;
-const describe = (c: Change) => `${fmtAmount(c.amount)} ${c.symbol}${c.usd != null ? ` (${fmtUsd(c.usd)})` : ""}`;
+const describe = (c: Change) => `${c.atLeast ? "at least " : ""}${fmtAmount(c.amount)} ${c.symbol}${c.usd != null ? ` (${fmtUsd(c.usd)})` : ""}`;
 
 /**
  * Turns a transaction's net changes into pre-sign findings: what you send and get, whether the rate is bad,
@@ -114,8 +114,8 @@ export function effectFindings(changes: Change[], before: Allocation, watches: W
   const inUsd = got.reduce((s, c) => s + (c.usd ?? NaN), 0);
   if (sent.length && got.length && Number.isFinite(outUsd) && Number.isFinite(inUsd) && outUsd >= 10) {
     const loss = 1 - inUsd / outUsd;
-    if (loss > 0.15) findings.push({ severity: "critical", title: `You'd get ${(loss * 100).toFixed(0)}% less value back`, detail: `You give about ${fmtUsd(outUsd)} and get about ${fmtUsd(inUsd)}. Check the rate and the site before signing.` });
-    else if (loss > 0.03) findings.push({ severity: "warning", title: `You'd lose about ${(loss * 100).toFixed(1)}% on this trade`, detail: `You give about ${fmtUsd(outUsd)} and get about ${fmtUsd(inUsd)}: fees, slippage or a poor route.` });
+    if (loss > 0.15) findings.push({ severity: "critical", title: `You'd get ${(loss * 100).toFixed(0)}% less value back`, detail: `You give about ${fmtUsd(outUsd)} and get ${got.some((c) => c.atLeast) ? "at least " : "about "}${fmtUsd(inUsd)}. Check the rate and the site before signing.` });
+    else if (loss > 0.03) findings.push({ severity: "warning", title: `You'd lose about ${(loss * 100).toFixed(1)}% on this trade`, detail: `You give about ${fmtUsd(outUsd)} and get ${got.some((c) => c.atLeast) ? "at least " : "about "}${fmtUsd(inUsd)}: fees, slippage or a poor route.` });
   } else if (contractCall && sent.length && !got.length && Number.isFinite(outUsd) && outUsd >= 10) {
     findings.push({ severity: "warning", title: "Nothing comes back to your wallets", detail: `About ${fmtUsd(outUsd)} leaves and no token arrives. Fine for a payment or deposit you expect; a red flag for a swap.` });
   }
@@ -156,41 +156,39 @@ export function effectFindings(changes: Change[], before: Allocation, watches: W
   return { findings, rows };
 }
 
-/** Simulates a Base transaction from one of the user's wallets and checks its effects. Null when it can't be simulated. */
-export async function txEffects(brain: Brain, tx: { from: string; to: string | null; data: string; value?: string }, contractCall: boolean): Promise<{ findings: SnapFinding[]; rows: Array<{ label: string; value: string }> } | null> {
-  const sim = await simulateTransfers(tx).catch(() => null);
-  if (!sim || !sim.ok) return null;
-  if (sim.reverted) return { findings: [{ severity: "warning", title: "This transaction would fail", detail: "Simulated on the latest block, it reverts. You'd pay the network fee for nothing." }], rows: [] };
+/** The user's portfolio mix right now (Base and NEAR holdings plus loans), for checking a transaction against their targets. */
+export async function currentMix(brain: Brain): Promise<{ before: Allocation; holdings: Holding[] }> {
+  const { holdings } = await brain.portfolio.holdings(brain.scenario.get()).catch(() => ({ holdings: [] as Holding[] }));
+  return { before: allocationOf(holdings, brain.latestSnapshot()?.positions ?? []), holdings };
+}
 
+/** Simulates an EVM transaction and checks its effects. Null when the network's node can't simulate it. */
+export async function txEffects(brain: Brain, chain: EvmChain, tx: { from: string; to: string | null; data: string; value?: string }, contractCall: boolean): Promise<{ findings: SnapFinding[]; rows: Array<{ label: string; value: string }> } | null> {
+  const sim = await simulateTransfers(chain.rpc, tx).catch(() => null);
+  if (!sim || !sim.ok) return null;
+  if (sim.reverted) return { findings: [{ severity: "warning", title: "This transaction would fail", detail: `Simulated on ${chain.name}'s latest block, it reverts. You'd pay the network fee for nothing.` }], rows: [] };
+
+  // EVM addresses are the same on every EVM chain, so any of the user's EVM wallets counts as theirs here.
   const own = new Set(brain.wallets.wallets.filter((w) => w.chain === "base").map((w) => w.address.toLowerCase()));
   own.add(tx.from.toLowerCase());
-  const tokens = await tokenList().catch(() => [] as TokenInfo[]);
-  // Symbols and decimals for tokens NEAR Intents doesn't list (no price, but still worth naming).
-  const meta = new Map<string, { symbol: string; decimals: number }>();
-  const unknown = [...new Set(sim.transfers.map((t) => t.token))].filter((t) => t !== NATIVE && !tokens.some((x) => x.chain === "base" && x.contract === t));
-  await Promise.all(
-    unknown.map(async (t) => {
-      const [symbol, decimals] = await Promise.all([
-        baseClient.readContract({ address: getAddress(t), abi: erc20Abi, functionName: "symbol" }).catch(() => null),
-        baseClient.readContract({ address: getAddress(t), abi: erc20Abi, functionName: "decimals" }).catch(() => null),
-      ]);
-      if (symbol && decimals != null) meta.set(t, { symbol: String(symbol), decimals: Number(decimals) });
-    }),
-  );
+  const tokens = [...new Set([...sim.transfers.map((t) => t.token), ...sim.approvals.map((a) => a.token)])];
+  const meta = await resolveTokens(chain, tokens).catch(() => new Map<string, TokenMeta>());
+
   // Permissions hidden inside the call: an unlimited or approve-all grant to an unfamiliar contract is how drainers work.
   const hidden: SnapFinding[] = contractCall
     ? sim.approvals
         .filter((a) => own.has(a.owner) && !KNOWN_SPENDERS[a.spender] && (a.amount === "all" || a.amount >= maxUint256 / 2n))
         .map((a) => {
-          const name = tokens.find((x) => x.chain === "base" && x.contract === a.token)?.symbol ?? meta.get(a.token)?.symbol ?? `${a.token.slice(0, 6)}…${a.token.slice(-4)}`;
+          const name = meta.get(a.token)?.symbol ?? `${a.token.slice(0, 6)}…${a.token.slice(-4)}`;
           return { severity: "warning" as const, title: a.amount === "all" ? "This gives a contract control of a whole collection" : `This also gives unlimited access to your ${name}`, detail: `${a.spender.slice(0, 6)}…${a.spender.slice(-4)} could move ${a.amount === "all" ? "every item" : `all your ${name}`} later, not just now. Only sign if you trust this app.` };
         })
     : [];
-  const changes = netChanges(sim.transfers, own, tokens, meta);
-  if (!changes.length) return { findings: [...hidden, ...(contractCall && !hidden.length ? [{ severity: "info" as const, title: "No tokens leave or enter your wallets", detail: "Simulated on the latest block." }] : [])], rows: [] };
+  const changes = netChanges(sim.transfers, own, meta);
+  if (!changes.length) return { findings: [...hidden, ...(contractCall && !hidden.length ? [{ severity: "info" as const, title: "No tokens leave or enter your wallets", detail: `Simulated on ${chain.name}'s latest block.` }] : [])], rows: [] };
 
-  const { holdings } = await brain.portfolio.holdings(brain.scenario.get()).catch(() => ({ holdings: [] as Holding[] }));
-  const before = allocationOf(holdings, brain.latestSnapshot()?.positions ?? []);
+  const { before, holdings } = await currentMix(brain);
   const effects = effectFindings(changes, before, brain.store.listWatches("active"), holdings, contractCall);
   return { findings: [...hidden, ...effects.findings], rows: effects.rows };
 }
+
+export { NATIVE };

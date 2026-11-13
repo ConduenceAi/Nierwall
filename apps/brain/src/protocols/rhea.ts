@@ -27,7 +27,8 @@ export async function rheaAssets(): Promise<RheaAssets> {
   return assets;
 }
 
-function tokenInfo(assets: RheaAssets, tokenId: string) {
+/** A Rhea token's symbol, internal decimals (token + extra), collateral weight and price. */
+export function tokenInfo(assets: RheaAssets, tokenId: string) {
   const a = assets[tokenId];
   const symbol = a?.metadata?.symbol ?? tokenId.slice(0, 10);
   const decimals = (a?.metadata?.decimals ?? 0) + (a?.config?.extra_decimals ?? 0);

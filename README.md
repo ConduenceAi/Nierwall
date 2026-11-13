@@ -91,8 +91,11 @@ loan health before and after, your mix before and after, the cost, and **Review 
 
 ### 4. It checks transactions before you sign
 
-The **Nierwall Snap** adds a panel to MetaMask's confirmation screen for transactions on Base. Before you sign,
-your Mac runs the exact transaction on the latest block without sending it, so it works for any app or swap:
+The **Nierwall Snap** adds a panel to MetaMask's confirmation screen for every transaction MetaMask sends, on any
+network. Before you sign, your Mac runs the exact transaction on that network's latest block without sending it, so
+it works for any app or swap. That covers Ethereum, Base, Arbitrum, Optimism, Polygon, BNB Chain, Gnosis, Celo,
+Linea, Berachain, Sonic, Unichain and Mantle. On networks whose nodes can't simulate (Avalanche, Scroll, zkSync,
+Aurora) or that Nierwall doesn't know yet, it still reads transfers and approvals and says it only decoded the call.
 
 - **What you send and get:** "You send 1,500 USDC ($1,500) · You get 0.74 ETH ($1,480)".
 - **Your mix:** if a swap breaks a target you set, it says so and suggests what else you could use. For example:
@@ -106,6 +109,10 @@ your Mac runs the exact transaction on the latest block without sending it, so i
   1.62 → 0.14 and is marked critical.
 - **Transfers:** checks that a deposit matches the Nierwall quote you're paying, and warns when you send to an
   address that isn't yours or go below a balance you said to keep.
+- **NEAR, from MetaMask:** NEAR lets MetaMask accounts sign NEAR transactions, and the Snap reads them too:
+  transfers, token sends, Rhea DEX swaps, and Rhea repays, borrows and collateral changes with your loan health
+  before and after. A new key with full access to your NEAR account is flagged critical, as is a transaction whose
+  target doesn't match the NEAR action inside it.
 
 It never blocks a transaction. If it can't check one, it says "not checked", never "looks fine".
 
@@ -175,7 +182,8 @@ flowchart LR
 | NEAR AI Cloud (TEE) | Your messages and the position data looked up to answer them, with wallet nicknames instead of addresses |
 | OpenAI | Text used to build memory, with nicknames, never addresses |
 | Telegram | Alert text, at the detail level you choose (`TELEGRAM_DETAIL`) |
-| NEAR and Base RPCs, FastNEAR | Reads of your positions and balances; the Base RPC also simulates transactions the Snap checks |
+| NEAR and Base RPCs, FastNEAR | Reads of your positions and balances |
+| Public nodes (publicnode.com) | A transaction the Snap checks, simulated on its network; set `RPC_URL_<chain id>` to use your own node |
 | CoinGecko | Coin ids for prices and price history, never addresses |
 | NEAR Intents | Price checks use stand-in addresses. Your real addresses go only when you open a fix or plan to sign; a cross-chain transfer links those wallets on-chain, and Nierwall warns you first. |
 
@@ -266,7 +274,7 @@ The full tracker is in [docs/PROGRESS.md](docs/PROGRESS.md). The original design
 - Automatic fixes on alerts are Rhea-only; for Aave, ask the advisor for a plan (repay, supply and withdraw are built).
 - Adding or withdrawing Rhea collateral opens the Rhea app instead of building the transaction.
 - Holdings and the portfolio mix cover tokens on Base and NEAR that NEAR Intents lists; other chains aren't counted.
-- The Snap can't decode NEAR transactions sent through MetaMask yet. It says "not checked" for them.
+- On networks other than Base and NEAR, the Snap's mix check counts your Base and NEAR holdings only.
 - Installing a local Snap, and MetaMask's full-screen critical warning, need MetaMask Flask.
 
 ## Project layout
