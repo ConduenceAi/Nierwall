@@ -1,3 +1,4 @@
+import Accelerate
 import AVFoundation
 import Foundation
 import Speech
@@ -13,10 +14,14 @@ final class SpeechInput: @unchecked Sendable {
     private var targetFormat: AVAudioFormat?
     private var finalText = ""
     private var volatileText = ""
+    private var stopped = false
+    private var tapInstalled = false
     private let lock = NSLock()
 
     /// Called on the main queue with the running transcript.
     var onTranscript: ((String) -> Void)?
+    /// Called on the main queue with the microphone level, 0 (quiet) to 1 (loud), about 20 times a second.
+    var onLevel: ((Double) -> Void)?
 
     /// Domain words that generic dictation tends to get wrong.
     private let vocabulary = ["Nierwall", "Rhea", "Aave", "USDC", "NEAR", "NEAR Intents", "health factor", "wNEAR", "Base", "MetaMask"]
@@ -28,6 +33,7 @@ final class SpeechInput: @unchecked Sendable {
         if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
             try await request.downloadAndInstall() // first run only: installs Apple's on-device model
         }
+        if lock.withLock({ stopped }) { throw CancellationError() }
         let analyzer = SpeechAnalyzer(modules: [transcriber])
         let context = AnalysisContext()
         context.contextualStrings[.general] = vocabulary
@@ -35,7 +41,7 @@ final class SpeechInput: @unchecked Sendable {
         targetFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber])
 
         let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
-        self.continuation = continuation
+        lock.withLock { self.continuation = continuation }
         resultsTask = Task { [weak self] in
             do {
                 for try await result in transcriber.results {
@@ -57,15 +63,36 @@ final class SpeechInput: @unchecked Sendable {
         if let targetFormat, targetFormat != inputFormat {
             converter = AVAudioConverter(from: inputFormat, to: targetFormat)
         }
-        input.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
-            self?.feed(buffer)
+        // Turn the microphone on only if stop() wasn't called while the model was loading.
+        let cancelled = try lock.withLock { () -> Bool in
+            if stopped { return true }
+            input.installTap(onBus: 0, bufferSize: 2048, format: inputFormat) { [weak self] buffer, _ in
+                self?.meter(buffer)
+                self?.feed(buffer)
+            }
+            tapInstalled = true
+            engine.prepare()
+            try engine.start()
+            return false
         }
-        engine.prepare()
-        try engine.start()
+        if cancelled {
+            continuation.finish()
+            resultsTask?.cancel()
+            throw CancellationError()
+        }
+    }
+
+    private func meter(_ buffer: AVAudioPCMBuffer) {
+        guard let onLevel, let samples = buffer.floatChannelData?[0], buffer.frameLength > 0 else { return }
+        var rms: Float = 0
+        vDSP_rmsqv(samples, 1, &rms, vDSP_Length(buffer.frameLength))
+        let db = 20 * log10(max(rms, 1e-7))
+        let level = Double(min(max((db + 50) / 40, 0), 1)) // -50 dB is a quiet room, -10 dB is loud speech
+        DispatchQueue.main.async { onLevel(level) }
     }
 
     private func feed(_ buffer: AVAudioPCMBuffer) {
-        guard let continuation else { return }
+        guard let continuation = lock.withLock({ self.continuation }) else { return }
         guard let converter, let targetFormat else {
             continuation.yield(AnalyzerInput(buffer: buffer))
             return
@@ -86,10 +113,14 @@ final class SpeechInput: @unchecked Sendable {
 
     /// Stops listening and returns the final transcript.
     func stop() async -> String {
-        engine.stop()
-        engine.inputNode.removeTap(onBus: 0)
+        let continuation = lock.withLock { () -> AsyncStream<AnalyzerInput>.Continuation? in
+            stopped = true
+            if engine.isRunning { engine.stop() }
+            if tapInstalled { engine.inputNode.removeTap(onBus: 0); tapInstalled = false }
+            defer { self.continuation = nil }
+            return self.continuation
+        }
         continuation?.finish()
-        continuation = nil
         try? await analyzer?.finalizeAndFinishThroughEndOfInput()
         _ = await resultsTask?.value
         analyzer = nil
@@ -98,13 +129,21 @@ final class SpeechInput: @unchecked Sendable {
 }
 
 /// On-device text to speech. Picks the best installed English voice.
-final class SpeechOutput {
+/// Used from the main thread only; delegate callbacks hop to the main queue.
+final class SpeechOutput: NSObject, AVSpeechSynthesizerDelegate, @unchecked Sendable {
     private let synth = AVSpeechSynthesizer()
     private lazy var voice: AVSpeechSynthesisVoice? = {
         let english = AVSpeechSynthesisVoice.speechVoices().filter { $0.language.hasPrefix("en") }
         return english.first { $0.quality == .premium } ?? english.first { $0.quality == .enhanced } ?? AVSpeechSynthesisVoice(language: "en-US")
     }()
     var enabled = true
+    /// Called on the main queue when speech starts (true) and ends (false).
+    var onSpeakingChanged: ((Bool) -> Void)?
+
+    override init() {
+        super.init()
+        synth.delegate = self
+    }
 
     func say(_ text: String) {
         guard enabled, !text.isEmpty else { return }
@@ -116,4 +155,12 @@ final class SpeechOutput {
     }
 
     func stop() { synth.stopSpeaking(at: .immediate) }
+
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didStart utterance: AVSpeechUtterance) { report(true) }
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) { report(false) }
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) { report(false) }
+
+    private func report(_ speaking: Bool) {
+        DispatchQueue.main.async { self.onSpeakingChanged?(speaking) }
+    }
 }

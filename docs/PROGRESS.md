@@ -1,6 +1,6 @@
 # Progress
 
-Last updated: 2026-11-12 (night, IST). Deadline: 2026-11-14 23:59 UTC. Judging 16 Nov, results 18 Nov.
+Last updated: 2026-11-13 (afternoon, IST). Deadline: 2026-11-14 23:59 UTC. Judging 16 Nov, results 18 Nov.
 
 | # | Component | Status | Notes |
 |---|-----------|--------|-------|
@@ -12,7 +12,7 @@ Last updated: 2026-11-12 (night, IST). Deadline: 2026-11-14 23:59 UTC. Judging 1
 | 6 | NEAR AI agent | Built, untested live | Attested, end-to-end encrypted, 7 tools, number check, seed-phrase tripwire, template fallback. Needs `NEAR_AI_API_KEY` |
 | 7 | Fixes, NEAR Intents quotes, review and signing page | Done, signing untested | Live 1Click quotes with 5 checks; signing needs your wallets (test with a tiny amount); blocked on demo accounts |
 | 8 | MetaMask Snap (pre-sign checks) | Built, untested in MetaMask | Analysis tested with real calldata; needs MetaMask Flask in your browser |
-| 9 | Mac menu-bar app (Swift) | Built, launched | Connects to the brain. Panel, voice and notifications need you at the screen |
+| 9 | Mac menu-bar app (Swift) | Built, launched | Hold ⌘⌥ for the Siri-style overlay (orb, edge glow, spoken answers). Rendered and checked offscreen; voice, overlay and notifications still need you at the screen |
 | 10 | Always-on (launchd) + docs | Done | `pnpm always-on` installs it (you run it) |
 
 ## Before submitting
@@ -27,6 +27,11 @@ Last updated: 2026-11-12 (night, IST). Deadline: 2026-11-14 23:59 UTC. Judging 1
 
 ## Log
 
+- **2026-11-13** Siri-style voice overlay: hold ⌘⌥ in any app and an orb appears over everything, with a glow
+  around the screen. The orb reacts to your voice, swirls while thinking and pulses while speaking; answers come
+  with their cards and fade away unless there's a button to press. ⌘⌥ is detected without keyboard
+  permissions (modifier state plus key/click counters), and shortcuts like ⌘⌥Esc don't trigger it. Fixed the
+  header orb's pulse and a case where the mic could stay on if you let go while the speech model was loading.
 - **2026-11-12 (night)** Renamed to Nierwall everywhere users see it: app, Snap, Telegram, signing page, docs.
   Internal names still say guardian. README rewritten for readers; this tracker moved here. Added a "Get alerts on
   Telegram" button to the app and `pnpm simulate` for demo price drops. `pnpm demo` now includes a public USDC

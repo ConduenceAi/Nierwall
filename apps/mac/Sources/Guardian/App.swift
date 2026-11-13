@@ -29,14 +29,18 @@ final class FloatingPanel: NSPanel {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var panel: FloatingPanel!
+    private var overlay: OverlayController!
     private let brain = BrainClient()
     private let ui = UIState()
     private let speaker = SpeechOutput()
     private let notifier = Notifier()
-    private var hotKey: HotKey?
+    private let talkKeys = TalkKeys()
     private var speech: AnyObject?
-    private var holdTimer: Timer?
-    private var panelWasVisible = false
+    /// Where the overlay's question sits in brain.items; its answer is the next assistant item after it.
+    private var awaitingReply: Int?
+    private var replyTimeout: Timer?
+    private var listenStartedAt = Date()
+    private var lastVoiceAt: Date?
     private var bag = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -48,15 +52,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let actions = PanelActions(
             send: { [weak self] text in self?.ui.voiceTurn = false; self?.brain.ask(text) },
             toggleMic: { [weak self] in self?.toggleListening() },
-            review: { [weak self] fixId in Task { if let err = await self?.brain.review(fixId: fixId) { self?.ui.notice = err } } },
-            confirmWatch: { [weak self] id in Task { _ = await self?.brain.confirmWatch(id) } },
+            review: { [weak self] fixId in Task { await self?.review(fixId) } },
+            confirmWatch: { [weak self] id in Task { _ = await self?.brain.confirmWatch(id); self?.overlay.dismissSoon() } },
             snooze: { [weak self] id in Task { await self?.brain.snooze(id) } },
             linkTelegram: { [weak self] in Task { if let err = await self?.brain.linkTelegram() { self?.ui.notice = err } } }
         )
         panel = FloatingPanel(content: NSHostingView(rootView: PanelView(brain: brain, ui: ui, actions: actions)))
+        overlay = OverlayController(brain: brain, actions: actions, openPanel: { [weak self] in self?.showPanel() })
+        overlay.onOrbTap = { [weak self] in self?.orbTapped() }
+        overlay.onCancel = { [weak self] in self?.cancelVoice() }
+        overlay.onClose = { [weak self] in self?.overlayClosed() }
+        speaker.onSpeakingChanged = { [weak self] speaking in self?.overlay.setSpeaking(speaking) }
 
         brain.onAlert = { [weak self] alert, _ in
-            guard alert.severity != "info" || true else { return }
             self?.notifier.post(title: alert.title, body: alert.body, alertId: alert.alertId, incidentId: alert.incidentId, critical: alert.severity == "critical")
         }
         brain.onReply = { [weak self] reply in
@@ -72,10 +80,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .receive(on: RunLoop.main)
             .sink { [weak self] _, _ in self?.updateIcon() }
             .store(in: &bag)
+        brain.$items
+            .receive(on: RunLoop.main)
+            .sink { [weak self] items in self?.deliverReply(items) }
+            .store(in: &bag)
 
-        hotKey = HotKey()
-        hotKey?.onDown = { [weak self] in self?.hotKeyDown() }
-        hotKey?.onUp = { [weak self] in self?.hotKeyUp() }
+        talkKeys.onHoldStart = { [weak self] in self?.beginVoice(holdToTalk: true) }
+        talkKeys.onHoldEnd = { [weak self] in self?.holdReleased() }
+        talkKeys.onTap = { [weak self] in self?.keysTapped() }
+        talkKeys.onInterrupted = { [weak self] in self?.cancelVoice() }
 
         brain.connect()
     }
@@ -87,6 +100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func showPanel() {
+        if overlay.isVisible { cancelVoice() }
         if let button = statusItem.button, let window = button.window {
             let rect = window.convertToScreen(button.convert(button.bounds, to: nil))
             let screen = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
@@ -96,67 +110,152 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.makeKeyAndOrderFront(nil)
     }
 
-    // MARK: Hotkey: hold to talk, tap to toggle the panel
-
-    private func hotKeyDown() {
-        panelWasVisible = panel.isVisible
-        showPanel()
-        holdTimer?.invalidate()
-        holdTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
-            Task { @MainActor in self?.startListening() }
+    private func review(_ fixId: String) async {
+        if let err = await brain.review(fixId: fixId) {
+            ui.notice = err
+            if overlay.isVisible { overlay.showMessage(err, dismissAfter: 6) }
+        } else {
+            overlay.hide()
         }
     }
 
-    private func hotKeyUp() {
-        holdTimer?.invalidate()
-        if ui.listening {
-            stopListeningAndSend()
-        } else if panelWasVisible {
-            panel.orderOut(nil)
-        }
+    // MARK: ⌘⌥: hold to talk, tap to finish or close
+
+    private func holdReleased() {
+        if ui.listening, overlay.model.holdToTalk { finishVoice() }
     }
 
-    // MARK: Voice
+    private func keysTapped() {
+        if ui.listening { finishVoice() } else if overlay.isVisible { cancelVoice() }
+    }
+
+    private func orbTapped() {
+        switch overlay.model.phase {
+        case .listening: finishVoice()
+        case .answer, .message: beginVoice(holdToTalk: false)
+        case .preparing, .thinking: break
+        }
+    }
 
     private func toggleListening() {
-        ui.listening ? stopListeningAndSend() : startListening()
+        ui.listening ? finishVoice() : beginVoice(holdToTalk: false)
     }
 
-    private func startListening() {
+    // MARK: Voice, through the Siri-style overlay
+
+    private func beginVoice(holdToTalk: Bool) {
         guard !ui.listening else { return }
         guard #available(macOS 26.0, *) else {
             ui.notice = "Voice needs macOS 26 or later. Typing works."
+            showPanel()
             return
         }
         speaker.stop()
+        replyTimeout?.invalidate()
+        awaitingReply = nil
+        panel.orderOut(nil)
+        overlay.model.reset(holdToTalk: holdToTalk)
+        overlay.show()
+
         let input = SpeechInput()
-        input.onTranscript = { [weak self] text in self?.ui.transcript = text }
+        input.onTranscript = { [weak self] text in self?.overlay.model.transcript = text }
+        input.onLevel = { [weak self] level in self?.heard(level) }
         speech = input
         ui.listening = true
-        ui.transcript = ""
         ui.notice = nil
+        listenStartedAt = Date()
+        lastVoiceAt = nil
         Task {
             do {
                 try await input.start()
+                if ui.listening, speech === input { overlay.model.phase = .listening }
+            } catch is CancellationError {
+                // Stopped while the speech model was still loading; finishVoice already said so.
             } catch {
+                guard speech === input else { return }
                 ui.listening = false
-                ui.notice = "Couldn't start listening: \(error.localizedDescription)"
+                speech = nil
+                overlay.showMessage("Couldn't start listening: \(error.localizedDescription)", dismissAfter: 6)
             }
         }
     }
 
-    private func stopListeningAndSend() {
-        guard #available(macOS 26.0, *), let input = speech as? SpeechInput else { ui.listening = false; return }
+    /// Drives the orb, and ends a tap-to-talk turn after a short pause once you've said something.
+    private func heard(_ level: Double) {
+        overlay.model.push(level: level)
+        guard ui.listening, !overlay.model.holdToTalk, overlay.model.phase == .listening else { return }
+        let now = Date()
+        if level > 0.3 { lastVoiceAt = now }
+        let quiet = now.timeIntervalSince(lastVoiceAt ?? listenStartedAt)
+        let said = !overlay.model.transcript.isEmpty
+        if (said && quiet > 1.4) || (!said && quiet > 6) || now.timeIntervalSince(listenStartedAt) > 30 {
+            finishVoice()
+        }
+    }
+
+    /// Stops listening and sends what you said.
+    private func finishVoice() {
+        guard ui.listening, #available(macOS 26.0, *), let input = speech as? SpeechInput else { return }
+        ui.listening = false
+        let wasPreparing = overlay.model.phase == .preparing
+        overlay.model.phase = .thinking
+        overlay.model.level = 0
         Task {
             let text = await input.stop()
-            ui.listening = false
-            ui.transcript = ""
-            speech = nil
-            if !text.isEmpty {
-                ui.voiceTurn = true
-                brain.ask(text)
+            if speech === input { speech = nil }
+            guard overlay.isVisible else { return }
+            if wasPreparing {
+                overlay.showMessage("Voice is still getting ready. Try again in a moment.", dismissAfter: 3)
+            } else if text.isEmpty {
+                overlay.showMessage("I didn't catch that.")
+            } else {
+                ask(text)
             }
         }
+    }
+
+    private func ask(_ text: String) {
+        overlay.model.transcript = text
+        ui.voiceTurn = true
+        awaitingReply = brain.items.count
+        brain.ask(text)
+        replyTimeout?.invalidate()
+        replyTimeout = Timer.scheduledTimer(withTimeInterval: 45, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.awaitingReply != nil else { return }
+                self.awaitingReply = nil
+                self.ui.voiceTurn = false
+                self.overlay.showMessage("No answer yet. It will show up in the Nierwall panel.", dismissAfter: 4)
+            }
+        }
+    }
+
+    private func deliverReply(_ items: [ChatItem]) {
+        guard let start = awaitingReply, items.count > start,
+              let reply = items[start...].first(where: { $0.role == .assistant }) else { return }
+        awaitingReply = nil
+        replyTimeout?.invalidate()
+        overlay.showAnswer(reply)
+    }
+
+    /// Esc, the close button, a quick ⌘⌥ tap, or a shortcut pressed mid-hold: stop without sending, and close.
+    private func cancelVoice() {
+        if ui.listening, #available(macOS 26.0, *), let input = speech as? SpeechInput {
+            ui.listening = false
+            speech = nil
+            Task { _ = await input.stop() }
+        }
+        overlay.hide()
+    }
+
+    /// Once the overlay closes, a late answer goes to the panel instead of being spoken out of nowhere.
+    private func overlayClosed() {
+        if awaitingReply != nil {
+            awaitingReply = nil
+            ui.voiceTurn = false
+        }
+        replyTimeout?.invalidate()
+        speaker.stop()
     }
 
     // MARK: Menu-bar icon reflects state

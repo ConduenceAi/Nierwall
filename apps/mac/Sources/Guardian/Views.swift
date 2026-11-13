@@ -3,7 +3,6 @@ import SwiftUI
 @MainActor
 final class UIState: ObservableObject {
     @Published var listening = false
-    @Published var transcript = ""
     @Published var notice: String?
     @Published var speakReplies = true
     var voiceTurn = false
@@ -52,7 +51,6 @@ struct PanelView: View {
                     if let last = brain.items.last { withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(last.id, anchor: .bottom) } }
                 }
             }
-            if ui.listening || !ui.transcript.isEmpty { transcriptBar }
             if let notice = ui.notice {
                 Text(notice).font(.caption).foregroundStyle(.secondary).padding(.horizontal, 14).padding(.vertical, 6)
             }
@@ -67,7 +65,7 @@ struct PanelView: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            Orb(active: ui.listening || brain.thinking)
+            SiriOrb(mode: ui.listening ? .listening : brain.thinking ? .thinking : .idle, size: 22)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Nierwall").font(.system(size: 15, weight: .semibold))
                 Text(stateLine).font(.caption).foregroundStyle(stateColor)
@@ -122,16 +120,6 @@ struct PanelView: View {
         }
     }
 
-    private var transcriptBar: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "waveform").foregroundStyle(Color.accentColor).symbolEffect(.variableColor.iterative, isActive: ui.listening)
-            Text(ui.transcript.isEmpty ? "Listening…" : ui.transcript).font(.callout).italic().lineLimit(2)
-            Spacer()
-        }
-        .padding(.horizontal, 14).padding(.vertical, 8)
-        .background(Color.accentColor.opacity(0.08))
-    }
-
     private var inputRow: some View {
         HStack(spacing: 8) {
             TextField("Ask Nierwall…", text: $input)
@@ -143,11 +131,11 @@ struct PanelView: View {
                     .foregroundStyle(ui.listening ? Palette.crit : Color.accentColor)
             }
             .buttonStyle(.plain)
-            .help(ui.listening ? "Stop and send" : "Talk (or hold ⌘⇧Space)")
+            .help(ui.listening ? "Stop and send" : "Talk (or hold ⌘⌥ anywhere)")
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
         .overlay(alignment: .bottomTrailing) {
-            Text("Hold ⌘⇧Space to talk").font(.system(size: 9)).foregroundStyle(.tertiary).padding(.trailing, 14).padding(.bottom, 2)
+            Text("Hold ⌘⌥ to talk").font(.system(size: 9)).foregroundStyle(.tertiary).padding(.trailing, 14).padding(.bottom, 2)
         }
     }
 
@@ -155,20 +143,6 @@ struct PanelView: View {
         let text = input
         input = ""
         actions.send(text)
-    }
-}
-
-struct Orb: View {
-    let active: Bool
-    @State private var pulse = false
-    var body: some View {
-        Circle()
-            .fill(AngularGradient(colors: [.blue, Palette.near, .purple, .blue], center: .center))
-            .frame(width: 22, height: 22)
-            .overlay(Circle().stroke(Color.accentColor.opacity(0.35), lineWidth: pulse && active ? 6 : 3))
-            .scaleEffect(pulse && active ? 1.08 : 1)
-            .animation(active ? .easeInOut(duration: 0.8).repeatForever(autoreverses: true) : .default, value: pulse)
-            .onAppear { pulse = true }
     }
 }
 
@@ -297,6 +271,8 @@ struct AlertCardView: View {
 struct FixCardView: View {
     let card: FixCard
     let review: (String) -> Void
+    /// Title, health change and the button only (the voice overlay).
+    var compact = false
     var body: some View {
         let f = card.fix
         VStack(alignment: .leading, spacing: 6) {
@@ -310,14 +286,17 @@ struct FixCardView: View {
                     }
                 }
             }
-            ForEach(Array(f.steps.enumerated()), id: \.offset) { i, s in
-                Text("\(i + 1). [\(s.chain)] \(s.description) · sign in \(s.wallet)").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if !compact {
+                ForEach(Array(f.steps.enumerated()), id: \.offset) { i, s in
+                    Text("\(i + 1). [\(s.chain)] \(s.description) · sign in \(s.wallet)").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                ForEach(f.notes, id: \.self) { n in Text("· \(n)").font(.caption2).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true) }
             }
-            ForEach(f.notes, id: \.self) { n in Text("· \(n)").font(.caption2).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true) }
             Button("Review & sign") { review(f.id) }
                 .buttonStyle(.borderedProminent).controlSize(.small)
                 .disabled(f.notes.contains { $0.contains("hypothetical") })
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(11)
         .background(.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.separator))

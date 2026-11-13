@@ -28,15 +28,21 @@ leaves the signing to you.
 
 ### 1. You talk to it
 
-Click the shield in the menu bar, or hold **⌘⇧Space** and speak. For example:
+Hold **⌘⌥** in any app and a Siri-style orb appears over whatever you're doing, with a soft glow around the
+edges of the screen. Speak, let go, and Nierwall answers out loud. For example:
 
 - "How's my Rhea loan?"
 - "What happens if NEAR drops 20%?"
 - "Ping me if my Rhea health goes under 1.5."
 
-Nierwall answers out loud and on screen with cards: a health gauge, alerts, and fix options with a **Review &
-sign** button. Speech recognition runs on the Mac, and the audio never leaves it. When you ask it to watch
-something, it reads the rule back and starts watching only after you confirm.
+The orb follows your voice, swirls while Nierwall thinks, and pulses while it talks. The answer comes with cards:
+a health gauge, alerts, and fix options with a **Review & sign** button. When you ask it to watch something, it
+reads the rule back and starts watching only after you confirm. The full chat history is one click away, on the
+shield in the menu bar.
+
+Speech recognition runs on the Mac, and the audio never leaves it. Holding ⌘⌥ is detected without keyboard
+permissions, so Nierwall never sees what you type, and pressing another key with ⌘⌥ (a shortcut like ⌘⌥Esc)
+doesn't trigger it.
 
 ### 2. It keeps watch and brings you a fix
 
@@ -103,7 +109,7 @@ flowchart LR
 
 | Part | What it does | Built with |
 |------|--------------|------------|
-| Menu-bar app | Voice and text chat, cards, notifications | Swift, SwiftUI, Apple SpeechAnalyzer |
+| Menu-bar app | Siri-style voice overlay, chat panel, cards, notifications | Swift, SwiftUI, Apple SpeechAnalyzer |
 | Brain | Reads loans and prices, runs watches, plans fixes, talks to the AI, sends Telegram alerts, answers the Snap | TypeScript on Node 24 |
 | Memory | Remembers your goals, limits and preferences as dated facts, so it knows what changed and when | Graphiti (Zep's open-source engine) on an embedded FalkorDB, Python |
 | MetaMask Snap | Pre-sign checks inside MetaMask | MetaMask Snaps SDK |
@@ -187,8 +193,8 @@ sign with those.
 
 | Try | How | You should see |
 |-----|-----|----------------|
-| Ask a question | Click the shield or hold ⌘⇧Space | A spoken answer and cards |
-| Set a watch (needs `NEAR_AI_API_KEY`) | Say "Ping me if my Rhea health goes under 1.3", then press Confirm | The watch turns active |
+| Ask a question | Hold ⌘⌥ in any app, speak, let go | The orb answers out loud, with cards |
+| Set a watch (needs `NEAR_AI_API_KEY`) | Hold ⌘⌥ and say "Ping me if my Rhea health goes under 1.3", then press Confirm | The watch turns active |
 | Simulate a crash | `pnpm simulate NEAR -9` (undo with `pnpm simulate off`) | An alert labeled SIMULATED on the Mac and in Telegram, with fixes |
 | Get alerts on your phone | Click "Get alerts on Telegram" in the panel, then tap Start in Telegram | "Linked" in Telegram |
 | Check a transaction | `pnpm snap`, then open `http://127.0.0.1:7420/snap/install` in a browser with MetaMask Flask | Nierwall's panel in MetaMask's confirmation screen |
