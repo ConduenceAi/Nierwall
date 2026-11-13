@@ -9,7 +9,7 @@ import { resolve } from "node:path";
 import { allocationOf, checkPlan } from "../advisor/plans.js";
 import { dryQuote } from "../advisor/quotes.js";
 import { rheaAssets, rheaTokenBySymbol } from "../protocols/rhea.js";
-import { coinPrices } from "../sources/coingecko.js";
+import { coinPrices, type CoinPrice } from "../sources/coins.js";
 import { tokenList } from "../tokens.js";
 import { DATA_DIR, loadWallets } from "../config.js";
 import { Brain } from "../brain.js";
@@ -142,8 +142,8 @@ async function main() {
       console.log(c.amber(`  Plan rejected: ${check.errors.join(" ")}`));
     }
   }
-  const sol = await coinPrices(["solana"]).catch(() => ({}) as Record<string, { usd: number; change24h: number | null }>);
-  if (sol.solana) console.log(c.dim(`  Token watches use CoinGecko for any coin, e.g. SOL is $${sol.solana.usd}${sol.solana.change24h != null ? ` (${sol.solana.change24h.toFixed(1)}% in 24h)` : ""}.`));
+  const sol = await coinPrices(["solana"]).catch(() => ({}) as Record<string, CoinPrice>);
+  if (sol.solana) console.log(c.dim(`  Token watches work for any coin, e.g. SOL is $${sol.solana.usd}${sol.solana.change24h != null ? ` (${sol.solana.change24h.toFixed(1)}% in 24h)` : ""}, from ${sol.solana.source === "defillama" ? "DefiLlama" : "CoinGecko"}.`));
   console.log("");
 }
 

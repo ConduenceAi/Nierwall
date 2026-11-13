@@ -7,7 +7,7 @@ export interface PriceInfo {
   usd: number;
   /** Unix seconds of the oracle publish time. */
   publishTime: number;
-  source: "aave-oracle" | "rhea-pyth" | "coingecko";
+  source: "aave-oracle" | "rhea-pyth" | "defillama" | "coingecko";
   /** True when a scenario shock changed this price. */
   simulated: boolean;
 }
@@ -52,7 +52,7 @@ export interface Snapshot {
   prices: Partial<Record<Symbol, PriceInfo>>;
   positions: LendingPosition[];
   balances: WalletBalance[];
-  /** Prices of CoinGecko coins that watches follow, keyed by coin id. */
+  /** Prices of coins that watches follow, keyed by CoinGecko coin id. */
   coins?: Record<string, { usd: number; change24h: number | null }>;
   /** Present when an allocation watch is active. */
   allocation?: Allocation;

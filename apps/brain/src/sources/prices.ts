@@ -1,5 +1,6 @@
 import { logger } from "../log.js";
 import type { PriceInfo, ScenarioState, Symbol } from "../types.js";
+import { coinPrices } from "./coins.js";
 
 const log = logger("prices");
 
@@ -49,18 +50,20 @@ async function oraclePrices(): Promise<RawPrices> {
   return out;
 }
 
-async function coingeckoPrices(): Promise<RawPrices> {
-  const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=ethereum,near,usd-coin&vs_currencies=usd");
-  if (!res.ok) throw new Error(`CoinGecko ${res.status}`);
-  const j = (await res.json()) as Record<string, { usd?: number }>;
+const COIN_IDS: Record<Symbol, string> = { ETH: "ethereum", NEAR: "near", USDC: "usd-coin" };
+
+/** Market prices for what the oracles missed: DefiLlama, or CoinGecko when DefiLlama can't answer. */
+async function marketPrices(symbols: Symbol[]): Promise<RawPrices> {
+  const coins = await coinPrices(symbols.map((s) => COIN_IDS[s]));
   const out: RawPrices = {};
-  if (j.ethereum?.usd) out.ETH = { usd: j.ethereum.usd, source: "coingecko" };
-  if (j.near?.usd) out.NEAR = { usd: j.near.usd, source: "coingecko" };
-  if (j["usd-coin"]?.usd) out.USDC = { usd: j["usd-coin"].usd, source: "coingecko" };
+  for (const s of symbols) {
+    const c = coins[COIN_IDS[s]];
+    if (c) out[s] = { usd: c.usd, source: c.source };
+  }
   return out;
 }
 
-/** Latest prices with scenario shocks applied. Oracles first, CoinGecko for anything missing. */
+/** Latest prices with scenario shocks applied. Oracles first, market prices for anything missing. */
 export async function fetchPrices(scenario: ScenarioState | null): Promise<Partial<Record<Symbol, PriceInfo>>> {
   let raw = await oraclePrices().catch((e) => {
     log.warn("oracle prices failed", { err: String(e).slice(0, 160) });
@@ -68,11 +71,11 @@ export async function fetchPrices(scenario: ScenarioState | null): Promise<Parti
   });
   const missing = (["ETH", "NEAR", "USDC"] as Symbol[]).filter((s) => !raw[s]);
   if (missing.length) {
-    const cg = await coingeckoPrices().catch((e) => {
-      log.warn("coingecko failed", { err: String(e).slice(0, 160) });
+    const market = await marketPrices(missing).catch((e) => {
+      log.warn("market prices failed", { err: String(e).slice(0, 160) });
       return {} as RawPrices;
     });
-    raw = { ...cg, ...raw };
+    raw = { ...market, ...raw };
   }
   const now = Math.floor(Date.now() / 1000);
   const out: Partial<Record<Symbol, PriceInfo>> = {};

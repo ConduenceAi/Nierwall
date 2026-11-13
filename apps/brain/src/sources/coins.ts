@@ -1,5 +1,8 @@
 import { env } from "../config.js";
+import { logger } from "../log.js";
+import { llamaChange24h, llamaDailyPrices, llamaPrices } from "./defillama.js";
 
+const log = logger("coins");
 const BASE = "https://api.coingecko.com/api/v3";
 
 /** A free demo key raises CoinGecko's rate limit; without one the public limit applies. */
@@ -13,20 +16,55 @@ async function get<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+/** DefiLlama knows coins by their CoinGecko id. */
+const llamaKey = (coinId: string) => `coingecko:${coinId}`;
+
 export interface CoinPrice {
   usd: number;
   change24h: number | null;
+  /** DefiLlama, or CoinGecko when DefiLlama couldn't answer. */
+  source: "defillama" | "coingecko";
 }
 
-/** USD prices for CoinGecko coin ids, in one request. Only coin ids are sent, never addresses. */
+/**
+ * USD prices for CoinGecko coin ids. DefiLlama goes first: it's free, with no key or monthly cap, so the refresh
+ * loop can ask every minute. CoinGecko fills in coins DefiLlama doesn't know, or all of them when it's down.
+ * Throws only when nothing could be priced. Only coin ids are sent, never addresses.
+ */
 export async function coinPrices(ids: string[]): Promise<Record<string, CoinPrice>> {
   const unique = [...new Set(ids)].filter(Boolean);
   if (!unique.length) return {};
+  const keys = unique.map(llamaKey);
+  const [prices, changes] = await Promise.all([
+    llamaPrices(keys).catch((e) => {
+      log.warn("defillama prices failed; asking coingecko", { err: String(e).slice(0, 160) });
+      return {} as Record<string, number>;
+    }),
+    llamaChange24h(keys).catch(() => ({}) as Record<string, number>),
+  ]);
+  const out: Record<string, CoinPrice> = {};
+  for (const id of unique) {
+    const usd = prices[llamaKey(id)];
+    if (usd) out[id] = { usd, change24h: changes[llamaKey(id)] ?? null, source: "defillama" };
+  }
+  const missing = unique.filter((id) => !out[id]);
+  if (missing.length) {
+    const cg = await coingeckoPrices(missing).catch((e) => {
+      if (!Object.keys(out).length) throw e;
+      log.warn("coingecko fallback failed", { coins: missing.length, err: String(e).slice(0, 160) });
+      return {};
+    });
+    Object.assign(out, cg);
+  }
+  return out;
+}
+
+async function coingeckoPrices(ids: string[]): Promise<Record<string, CoinPrice>> {
   const j = await get<Record<string, { usd?: number; usd_24h_change?: number }>>(
-    `/simple/price?ids=${encodeURIComponent(unique.join(","))}&vs_currencies=usd&include_24hr_change=true`,
+    `/simple/price?ids=${encodeURIComponent(ids.join(","))}&vs_currencies=usd&include_24hr_change=true`,
   );
   const out: Record<string, CoinPrice> = {};
-  for (const [id, v] of Object.entries(j)) if (typeof v.usd === "number") out[id] = { usd: v.usd, change24h: v.usd_24h_change ?? null };
+  for (const [id, v] of Object.entries(j)) if (typeof v.usd === "number") out[id] = { usd: v.usd, change24h: v.usd_24h_change ?? null, source: "coingecko" };
   return out;
 }
 
@@ -54,13 +92,21 @@ export interface Volatility {
   changePct: number;
 }
 
-/** How much a coin has moved over the last `days` days, from daily closes. Cached for an hour. */
+/** How much a coin has moved over the last `days` days, from one price a day. Cached for an hour. */
 const volCache = new Map<string, { at: number; v: Volatility }>();
 export async function volatility(coinId: string, days = 90): Promise<Volatility> {
   const hit = volCache.get(`${coinId}:${days}`);
   if (hit && Date.now() - hit.at < 3_600_000) return hit.v;
-  const j = await get<{ prices?: Array<[number, number]> }>(`/coins/${encodeURIComponent(coinId)}/market_chart?vs_currency=usd&days=${days}&interval=daily`);
-  const p = (j.prices ?? []).map((x) => x[1]).filter((x) => x > 0);
+  let p = (await llamaDailyPrices(llamaKey(coinId), days).catch(() => [] as number[])).filter((x) => x > 0);
+  // DefiLlama skips days it has no price for, which would count a two-day move as one day's. CoinGecko's series
+  // has no gaps, so it fills in; a gappy series is still used if CoinGecko is down.
+  if (p.length <= days) {
+    const j = await get<{ prices?: Array<[number, number]> }>(`/coins/${encodeURIComponent(coinId)}/market_chart?vs_currency=usd&days=${days}&interval=daily`).catch((e) => {
+      if (p.length < 10) throw e;
+      return null;
+    });
+    if (j) p = (j.prices ?? []).map((x) => x[1]).filter((x) => x > 0);
+  }
   if (p.length < 10) throw new Error(`Not enough price history for ${coinId}`);
   const moves = p.slice(1).map((x, i) => x / p[i]! - 1);
   const mean = moves.reduce((s, x) => s + x, 0) / moves.length;

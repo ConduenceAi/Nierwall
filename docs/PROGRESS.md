@@ -1,6 +1,6 @@
 # Progress
 
-Last updated: 2026-11-13 (afternoon, IST). Deadline: 2026-11-14 23:59 UTC. Judging 16 Nov, results 18 Nov.
+Last updated: 2026-11-13 (night, IST). Deadline: 2026-11-14 23:59 UTC. Judging 16 Nov, results 18 Nov.
 
 | # | Component | Status | Notes |
 |---|-----------|--------|-------|
@@ -14,7 +14,7 @@ Last updated: 2026-11-13 (afternoon, IST). Deadline: 2026-11-14 23:59 UTC. Judgi
 | 8 | MetaMask Snap (pre-sign checks) | Built, untested in MetaMask | Analysis tested with real calldata; needs MetaMask Flask in your browser |
 | 9 | Mac menu-bar app (Swift) | Built, launched | Press ⌘⌥ for the Siri-style orb (top center, no background, edge glow): a hands-free conversation where a pause sends, it answers and listens again, you can talk over it, and Esc or silence ends it. Turn-taking checked offline (`apps/mac/scripts/check.sh`); voice, echo cancellation, overlay and notifications still need you at the screen |
 | 10 | Always-on (launchd) + docs | Done | `pnpm always-on` installs it (you run it) |
-| 11 | Holdings, token watches, portfolio mix | Done, live-tested | Every token in every wallet (Base batched read, NEAR via FastNEAR); price watches for any CoinGecko coin; mix targets as watches |
+| 11 | Holdings, token watches, portfolio mix | Done, live-tested | Every token in every wallet (Base batched read, NEAR via FastNEAR); price watches for any coin, priced by DefiLlama; mix targets as watches |
 | 12 | Advisor (AI plans, Mac checks) | Checker live-tested, AI untested | Plans replayed against balances, loans and live quotes; review sessions built for swaps, moves, Aave and Rhea. AI sets floors, targets, alert severity and cost limits. Needs `NEAR_AI_API_KEY` to try the AI part |
 | 13 | Snap: transaction simulation | Done, live-tested on Base | "You send / you get", mix targets with alternatives, bad rates, hidden approvals, failing transactions |
 | 14 | Snap on every network | Done, live-tested on Ethereum, Arbitrum, Polygon, Avalanche | Simulation on 13 EVM networks, decoding elsewhere; NEAR transactions from MetaMask (NEP-518) decoded, including Rhea health and full-access keys |
@@ -31,6 +31,11 @@ Last updated: 2026-11-13 (afternoon, IST). Deadline: 2026-11-14 23:59 UTC. Judgi
 
 ## Log
 
+- **2026-11-13 (night)** Prices now come from DefiLlama's free coins API (no key, no monthly cap) instead of
+  CoinGecko, whose free tier would run out in about a week of checking every minute. That covers watched coins
+  and their 24-hour change, 90-day volatility, the backup when the ETH, NEAR and USDC oracles don't answer, and
+  token prices in the Snap on all 17 networks (each chain's DefiLlama prefix checked live). CoinGecko is now only
+  for finding coins by name and for the few prices DefiLlama doesn't have. 56 tests pass.
 - **2026-11-13 (night)** Voice is now a conversation: press ⌘⌥ (no holding), talk, pause, and the orb answers and
   listens again until you press Esc or stay quiet for 8 seconds. You can talk over it: its voice plays through the
   same audio engine as the mic with Apple's echo cancellation, its own words are filtered out of what it hears, and

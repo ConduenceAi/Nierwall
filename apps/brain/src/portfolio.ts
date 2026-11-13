@@ -5,7 +5,7 @@ import { readHoldings, type Holding } from "./holdings.js";
 import { logger } from "./log.js";
 import { baseTokenBalance, readAave, type AaveAccountDetail } from "./protocols/aave.js";
 import { nearBalances, readRhea, type RheaAccountDetail } from "./protocols/rhea.js";
-import { coinPrices } from "./sources/coingecko.js";
+import { coinPrices } from "./sources/coins.js";
 import { fetchPrices } from "./sources/prices.js";
 import type { ScenarioState, Snapshot, WalletBalance } from "./types.js";
 
@@ -51,7 +51,7 @@ export class Portfolio {
     const jobs: Array<Promise<void>> = [];
     let coins: Snapshot["coins"] = {};
     if (coinIds.length) {
-      jobs.push(coinPrices(coinIds).then((c) => void (coins = c)).catch((e) => void errors.push(`coingecko: ${String(e).slice(0, 120)}`)));
+      jobs.push(coinPrices(coinIds).then((c) => void (coins = c)).catch((e) => void errors.push(`coin prices: ${String(e).slice(0, 120)}`)));
     }
     for (const label of this.wallets.watchAave) {
       const w = this.wallet(label);

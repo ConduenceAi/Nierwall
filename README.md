@@ -53,7 +53,7 @@ A background service (the "brain") checks your loans on **Rhea** (NEAR) and **Aa
 every 20 seconds when you're close to a limit. It can watch:
 
 - loan health, and how far prices can fall before liquidation
-- the price of any token on CoinGecko ("tell me if SOL drops below $70")
+- the price of any token ("tell me if SOL drops below $70"), from DefiLlama's free price feed
 - your portfolio mix ("keep at least 20% in stablecoins")
 - a minimum balance you want to keep in a wallet
 - its own data sources, so it tells you when it can't see instead of going quiet
@@ -187,7 +187,8 @@ flowchart LR
 | Telegram | Alert text, at the detail level you choose (`TELEGRAM_DETAIL`) |
 | NEAR and Base RPCs, FastNEAR | Reads of your positions and balances |
 | Public nodes (publicnode.com) | A transaction the Snap checks, simulated on its network; set `RPC_URL_<chain id>` to use your own node |
-| CoinGecko | Coin ids for prices and price history, never addresses |
+| DefiLlama | Coin ids and token contract addresses, for prices and price history; never wallet addresses |
+| CoinGecko | Names you search for to find a coin, and the coin ids or token contracts DefiLlama has no price for; never wallet addresses |
 | NEAR Intents | Price checks use stand-in addresses. Your real addresses go only when you open a fix or plan to sign; a cross-chain transfer links those wallets on-chain, and Nierwall warns you first. |
 
 ## Try it
@@ -229,6 +230,7 @@ Every key is optional. Nierwall runs without them, with less:
 | `NEAR_AI_API_KEY` | Conversation on NEAR AI Cloud | Short built-in answers from computed numbers |
 | `OPENAI_API_KEY` | Memory | Nothing is remembered |
 | `TELEGRAM_BOT_TOKEN` | Alerts on your phone (create a bot with @BotFather) | Alerts on the Mac only |
+| `COINGECKO_API_KEY` | A higher rate limit for finding coins by name (free demo key) | CoinGecko's public limit, plenty for one person. Prices come from DefiLlama, which needs no key |
 
 Without `config/wallets.json`, Nierwall watches the same public demo accounts as `pnpm demo`. There's nothing to
 sign with those.
@@ -238,7 +240,7 @@ sign with those.
 | Ask a question | Press ⌘⌥ in any app and speak; pause when you're done | The orb answers out loud and listens for a follow-up; Esc ends it; anything to click opens in the panel |
 | Set a watch (needs `NEAR_AI_API_KEY`) | Press ⌘⌥ and say "Ping me if my Rhea health goes under 1.3", then press Confirm | The watch turns active |
 | Let the AI pick your limits | "How safe is my Rhea loan?" | A proposed floor and repair target with the reason, to confirm |
-| Watch any token | "Tell me if SOL drops below $70" | A watch on SOL's CoinGecko price, to confirm |
+| Watch any token | "Tell me if SOL drops below $70" | A watch on SOL's price, to confirm |
 | Set a target mix | "Keep at least 20% in stablecoins" | A mix watch, to confirm; the Snap and plans now respect it |
 | Ask for a plan | "Rebalance me toward 30% stablecoins" | Plan cards with health and mix before/after, cost, and **Review & sign** |
 | Simulate a crash | `pnpm simulate NEAR -9` (undo with `pnpm simulate off`) | An alert labeled SIMULATED on the Mac and in Telegram, with fixes |
@@ -246,7 +248,7 @@ sign with those.
 | Check a transaction | `pnpm snap`, then open `http://127.0.0.1:7420/snap/install` in a browser with MetaMask Flask | Nierwall's panel in MetaMask's confirmation screen |
 | Keep it running | `pnpm always-on` (undo with `sh ops/uninstall-always-on.sh`) | Brain, memory and app start at login and restart if they crash |
 
-Tests: `pnpm test` runs 40 tests, 4 of them against mainnet. `OFFLINE=1 pnpm test` skips the mainnet ones.
+Tests: `pnpm test` runs 56 tests, 4 of them against mainnet. `OFFLINE=1 pnpm test` skips the mainnet ones.
 
 ## Status
 

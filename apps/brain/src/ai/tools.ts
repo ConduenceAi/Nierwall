@@ -5,7 +5,7 @@ import type { Brain } from "../brain.js";
 import { fixesFor } from "../planner/fixes.js";
 import { rheaAssets, rheaTokenBySymbol } from "../protocols/rhea.js";
 import { riskClass } from "../protocols/risk.js";
-import { coinPrices, searchCoins, volatility } from "../sources/coingecko.js";
+import { coinPrices, searchCoins, volatility } from "../sources/coins.js";
 import { tokenList } from "../tokens.js";
 import type { LendingPosition, Symbol, Watch, WatchKind } from "../types.js";
 import { describeWatch } from "../watches/engine.js";
@@ -96,7 +96,7 @@ export const TOOL_DEFS = [
     type: "function" as const,
     function: {
       name: "asset_volatility",
-      description: "How much a token's price has moved over the last 90 days: typical daily move, worst day, worst week, total change (CoinGecko daily closes). Use it to choose loan floors and repair targets, and to judge risk. token: a symbol like NEAR, ETH, cbBTC, or a CoinGecko coin id.",
+      description: "How much a token's price has moved over the last 90 days: typical daily move, worst day, worst week, total change (one price a day). Use it to choose loan floors and repair targets, and to judge risk. token: a symbol like NEAR, ETH, cbBTC, or a CoinGecko coin id.",
       parameters: { type: "object", properties: { token: { type: "string" } }, required: ["token"], additionalProperties: false },
     },
   },
@@ -287,7 +287,7 @@ export async function runTool(name: string, args: Record<string, unknown>, ctx: 
       let current: number | undefined;
       if (isPrice && params.coinId) {
         current = (await coinPrices([String(params.coinId)]).catch(() => ({})) as Record<string, { usd: number }>)[String(params.coinId)]?.usd;
-        if (!current) return { error: "CoinGecko has no price for that coinId. Use an id from find_token." };
+        if (!current) return { error: "No price for that coinId. Use an id from find_token." };
         params.symbol = String(params.symbol ?? params.coinId).toUpperCase();
       } else if (isPrice) {
         current = snap?.prices[params.symbol as Symbol]?.usd;

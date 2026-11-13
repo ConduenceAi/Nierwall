@@ -5,7 +5,7 @@ import { logger } from "./log.js";
 import { DEFAULT_PREFS, fixesFor, type PlannerPrefs } from "./planner/fixes.js";
 import { Portfolio, type SnapshotWithDetail } from "./portfolio.js";
 import { Scenario, scenarioLabel } from "./scenario.js";
-import { coinPrices, volatility } from "./sources/coingecko.js";
+import { coinPrices, volatility } from "./sources/coins.js";
 import { Store } from "./store.js";
 import type { Alert, Incident, Severity, Snapshot } from "./types.js";
 import { combineSeverity, evaluate, isNearLimit, type Evaluation, type SeverityJudgment } from "./watches/engine.js";
