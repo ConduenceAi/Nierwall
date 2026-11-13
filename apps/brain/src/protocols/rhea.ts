@@ -12,7 +12,7 @@ interface RheaAssetView {
   metadata?: { symbol?: string; decimals?: number };
   config?: { volatility_ratio: number; extra_decimals: number; can_use_as_collateral?: boolean };
 }
-type RheaAssets = Record<string, RheaAssetView>;
+export type RheaAssets = Record<string, RheaAssetView>;
 interface RheaPortfolio {
   positions?: Record<string, { collateral?: Record<string, { balance: string }>; borrowed?: Record<string, { balance: string }> }>;
 }
@@ -108,6 +108,17 @@ export async function readRhea(walletLabel: string, accountId: string, scenario:
       simulated,
     },
   };
+}
+
+/** A Rhea token by symbol ("USDC", "wNEAR"; "NEAR" means wNEAR): its id, collateral weight and price. */
+export function rheaTokenBySymbol(assets: RheaAssets, symbol: string): { tokenId: string; symbol: string; usd: number; vr: number; collateral: boolean } | null {
+  const q = symbol.toLowerCase() === "near" ? "wnear" : symbol.toLowerCase();
+  for (const [tokenId, a] of Object.entries(assets)) {
+    if ((a.metadata?.symbol ?? "").toLowerCase() !== q) continue;
+    const i = tokenInfo(assets, tokenId);
+    return { tokenId, symbol: i.symbol, usd: i.usd, vr: i.vr, collateral: a.config?.can_use_as_collateral !== false };
+  }
+  return null;
 }
 
 /** Health after repaying `amount` of a borrowed token (same weights Rhea uses). */

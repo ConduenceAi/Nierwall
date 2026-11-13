@@ -1,8 +1,10 @@
 import { getAddress } from "viem";
 import { ADDRESSES, type Wallet, type WalletsConfig } from "./config.js";
+import { readHoldings, type Holding } from "./holdings.js";
 import { logger } from "./log.js";
 import { baseTokenBalance, readAave, type AaveAccountDetail } from "./protocols/aave.js";
 import { nearBalances, readRhea, type RheaAccountDetail } from "./protocols/rhea.js";
+import { coinPrices } from "./sources/coingecko.js";
 import { fetchPrices } from "./sources/prices.js";
 import type { ScenarioState, Snapshot, WalletBalance } from "./types.js";
 
@@ -16,14 +18,26 @@ export interface SnapshotWithDetail {
 }
 
 export class Portfolio {
+  private holdingsCache: { at: number; key: string; data: { holdings: Holding[]; errors: string[] } } | null = null;
+
   constructor(readonly wallets: WalletsConfig) {}
+
+  /** Every token in every wallet. Cached (2 minutes by default) so the APIs aren't hit on every tick. */
+  async holdings(scenario: ScenarioState | null, maxAgeMs = 120_000) {
+    const key = JSON.stringify(scenario?.active ? scenario.shocks : null);
+    const c = this.holdingsCache;
+    if (c && c.key === key && Date.now() - c.at < maxAgeMs) return c.data;
+    const data = await readHoldings(this.wallets.wallets, scenario);
+    this.holdingsCache = { at: Date.now(), key, data };
+    return data;
+  }
 
   wallet(label: string): Wallet | undefined {
     return this.wallets.wallets.find((w) => w.label === label);
   }
 
-  /** One full refresh: prices, watched lending positions, and wallet balances used by fixes. */
-  async refresh(scenario: ScenarioState | null): Promise<SnapshotWithDetail> {
+  /** One full refresh: prices, watched lending positions, wallet balances used by fixes, and watched coins. */
+  async refresh(scenario: ScenarioState | null, coinIds: string[] = []): Promise<SnapshotWithDetail> {
     const errors: string[] = [];
     const aave = new Map<string, AaveAccountDetail>();
     const rhea = new Map<string, RheaAccountDetail>();
@@ -34,6 +48,10 @@ export class Portfolio {
     });
 
     const jobs: Array<Promise<void>> = [];
+    let coins: Snapshot["coins"] = {};
+    if (coinIds.length) {
+      jobs.push(coinPrices(coinIds).then((c) => void (coins = c)).catch((e) => void errors.push(`coingecko: ${String(e).slice(0, 120)}`)));
+    }
     for (const label of this.wallets.watchAave) {
       const w = this.wallet(label);
       if (!w || w.chain !== "base") continue;
@@ -72,6 +90,7 @@ export class Portfolio {
       prices,
       positions: [...rhea.values(), ...aave.values()].map((d) => d.position),
       balances,
+      coins,
       errors,
       scenario,
     };

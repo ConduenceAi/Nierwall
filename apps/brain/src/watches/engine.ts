@@ -18,6 +18,14 @@ const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
 const usd = (x: number) => `$${x.toLocaleString("en-US", { maximumFractionDigits: x < 10 ? 4 : 2 })}`;
 const num = (x: number) => x.toFixed(2);
 
+/** Price a watch follows: an oracle price (ETH, NEAR, USDC) or any CoinGecko coin by id. */
+function watchedPrice(p: Record<string, any>, snap: Snapshot): { price: number | undefined; name: string } {
+  if (p.coinId) return { price: snap.coins?.[String(p.coinId)]?.usd, name: String(p.symbol ?? p.coinId) };
+  return { price: snap.prices[p.symbol as Symbol]?.usd, name: String(p.symbol) };
+}
+
+const coinName = (p: Record<string, any>) => (p.coinId && p.name ? `${p.symbol} (${p.name})` : String(p.symbol ?? p.coinId));
+
 function protocolName(positionId: string) {
   const [proto, label] = positionId.split(":");
   const name = proto === "rhea" ? "Rhea · NEAR" : proto === "aave" ? "Aave V3 · Base" : proto ?? positionId;
@@ -65,23 +73,23 @@ export function evaluate(watch: Watch, snap: Snapshot): Evaluation {
         detail: `Collateral can fall ${pct(d)} before liquidation (you asked to know under ${pct(limit)}).`,
       };
     }
-    case "price_below": {
-      const sym = p.symbol as Symbol;
-      const price = snap.prices[sym]?.usd;
+    case "price_below":
+    case "price_above": {
+      const { price, name: sym } = watchedPrice(p, snap);
       const level = Number(p.price);
       if (price == null) return { ...base, unknown: true, title: `${sym} price unavailable`, detail: "No price source answered." };
+      const below = watch.kind === "price_below";
       return {
         ...base,
         value: price,
-        triggered: price < level,
-        recovered: price >= level * 1.01,
-        title: `${sym} is below ${usd(level)}`,
+        triggered: below ? price < level : price > level,
+        recovered: below ? price >= level * 1.01 : price <= level * 0.99,
+        title: `${sym} is ${below ? "below" : "above"} ${usd(level)}`,
         detail: `${sym} is ${usd(price)} (your level ${usd(level)}).`,
       };
     }
     case "price_move": {
-      const sym = p.symbol as Symbol;
-      const price = snap.prices[sym]?.usd;
+      const { price, name: sym } = watchedPrice(p, snap);
       const ref = Number(p.referencePrice);
       const move = Number(p.pct); // e.g. -0.10
       if (price == null || !ref) return { ...base, unknown: true, title: `${sym} price unavailable`, detail: "No price source answered." };
@@ -129,18 +137,37 @@ export function evaluate(watch: Watch, snap: Snapshot): Evaluation {
 export function describeWatch(kind: Watch["kind"], params: Record<string, any>): string {
   switch (kind) {
     case "health_below":
-      return `${protocolName(params.positionId).name}: health factor below ${Number(params.threshold).toFixed(2)}`;
+      return `${protocolName(params.positionId).name}: health factor below ${Number(params.threshold).toFixed(2)}${params.target != null ? `, fixes aim for ${Number(params.target).toFixed(2)}` : ""}`;
     case "liq_distance":
       return `${protocolName(params.positionId).name}: within ${pct(Number(params.pct))} of liquidation`;
     case "price_below":
-      return `${params.symbol} below ${usd(Number(params.price))}`;
+      return `${coinName(params)} below ${usd(Number(params.price))}`;
+    case "price_above":
+      return `${coinName(params)} above ${usd(Number(params.price))}`;
     case "price_move":
-      return `${params.symbol} ${Number(params.pct) < 0 ? "drops" : "rises"} ${pct(Math.abs(Number(params.pct)))} from ${usd(Number(params.referencePrice))}`;
+      return `${coinName(params)} ${Number(params.pct) < 0 ? "drops" : "rises"} ${pct(Math.abs(Number(params.pct)))} from ${usd(Number(params.referencePrice))}`;
     case "balance_min":
       return `${params.walletLabel} holds less than ${params.amount} ${params.symbol}`;
     case "data_stale":
       return "Data sources stop answering";
   }
+}
+
+/** Safety rails the AI can't talk down: health this low, or liquidation this close, is always critical. */
+const ALWAYS_CRITICAL_HEALTH = 1.1;
+const ALWAYS_CRITICAL_DISTANCE = 0.05;
+
+export interface SeverityJudgment {
+  severity: "warning" | "critical";
+  reason: string;
+}
+
+/** The fixed rule's severity, unless the AI judged it from the market context; hard rails always win. */
+export function combineSeverity(e: Evaluation, judged: SeverityJudgment | null): { severity: Severity; reason: string | null } {
+  const v = e.value;
+  const rail = (e.watch.kind === "health_below" && v != null && v < ALWAYS_CRITICAL_HEALTH) || (e.watch.kind === "liq_distance" && v != null && v < ALWAYS_CRITICAL_DISTANCE);
+  if (rail) return { severity: "critical", reason: judged?.severity === "critical" ? judged.reason : null };
+  return judged ? { severity: judged.severity, reason: judged.reason } : { severity: e.severity, reason: null };
 }
 
 /** True when a watch is close to firing, so the scheduler should check more often. */
@@ -150,6 +177,7 @@ export function isNearLimit(e: Evaluation): boolean {
   if (e.watch.kind === "health_below") return e.value < Number(p.threshold) * 1.1;
   if (e.watch.kind === "liq_distance") return e.value < Number(p.pct) * 1.5;
   if (e.watch.kind === "price_below") return e.value < Number(p.price) * 1.03;
+  if (e.watch.kind === "price_above") return e.value > Number(p.price) * 0.97;
   if (e.watch.kind === "price_move") return Math.abs(e.value) > Math.abs(Number(p.pct)) * 0.7;
   return false;
 }

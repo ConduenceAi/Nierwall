@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluate, isNearLimit } from "../src/watches/engine.js";
+import { combineSeverity, evaluate, isNearLimit } from "../src/watches/engine.js";
 import { liquidationDrop } from "../src/protocols/risk.js";
 import type { Snapshot, Watch } from "../src/types.js";
 
@@ -60,5 +60,30 @@ describe("liquidation distance", () => {
   });
   it("stable collateral covering the debt means no liquidation from a fall", () => {
     expect(liquidationDrop("ETH", [{ cls: "ETH", value: 500 }, { cls: "STABLE", value: 2000 }], [{ cls: "STABLE", value: 1000 }])).toBeNull();
+  });
+});
+
+describe("token watches (CoinGecko)", () => {
+  it("watches any coin above, below or by a move, and never treats a missing price as safe", () => {
+    const s = snap({ coins: { solana: { usd: 80, change24h: -3 } } });
+    expect(evaluate(watch("price_below", { coinId: "solana", symbol: "SOL", price: 100 }), s).triggered).toBe(true);
+    expect(evaluate(watch("price_above", { coinId: "solana", symbol: "SOL", price: 75 }), s).triggered).toBe(true);
+    expect(evaluate(watch("price_above", { coinId: "solana", symbol: "SOL", price: 90 }), s).triggered).toBe(false);
+    expect(evaluate(watch("price_move", { coinId: "solana", symbol: "SOL", pct: -0.2, referencePrice: 100 }), s).triggered).toBe(true);
+    expect(evaluate(watch("price_below", { coinId: "pepe", symbol: "PEPE", price: 1 }), s).unknown).toBe(true);
+  });
+});
+
+describe("AI severity with hard rails", () => {
+  const ev = (kind: Watch["kind"], value: number, severity: "warning" | "critical" = "warning") =>
+    ({ watch: watch(kind, {}), triggered: true, recovered: false, unknown: false, severity, value, title: "", detail: "" }) as Parameters<typeof combineSeverity>[0];
+  it("uses the AI's call when there is one, the rule when there isn't", () => {
+    expect(combineSeverity(ev("health_below", 1.25), { severity: "critical", reason: "NEAR is falling fast" })).toEqual({ severity: "critical", reason: "NEAR is falling fast" });
+    expect(combineSeverity(ev("health_below", 1.25, "critical"), { severity: "warning", reason: "calm market" }).severity).toBe("warning");
+    expect(combineSeverity(ev("health_below", 1.25, "critical"), null).severity).toBe("critical");
+  });
+  it("never lets the AI downplay a loan about to be liquidated", () => {
+    expect(combineSeverity(ev("health_below", 1.08), { severity: "warning", reason: "calm" }).severity).toBe("critical");
+    expect(combineSeverity(ev("liq_distance", 0.03), { severity: "warning", reason: "calm" }).severity).toBe("critical");
   });
 });

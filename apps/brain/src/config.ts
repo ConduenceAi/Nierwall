@@ -19,11 +19,14 @@ const Env = z.object({
   MEMORY_URL: z.string().default("http://127.0.0.1:7421"),
   TELEGRAM_BOT_TOKEN: z.string().default(""),
   TELEGRAM_DETAIL: z.enum(["generic", "actionable", "detailed"]).default("actionable"),
-  NEAR_RPC_URL: z.string().url().default("https://rpc.mainnet.near.org"),
+  NEAR_RPC_URL: z.string().url().default("https://free.rpc.fastnear.com"),
   BASE_RPC_URL: z.string().url().default("https://base-rpc.publicnode.com"),
   SCENARIO_MODE: z.string().default("1"),
   GUARDIAN_DATA_DIR: z.string().optional(),
   ONECLICK_JWT: z.string().default(""),
+  COINGECKO_API_KEY: z.string().default(""),
+  /** Stronger TEE model for planning questions (rebalancing, trades); everyday chat uses NEAR_AI_MODEL. */
+  NEAR_AI_PLANNER_MODEL: z.string().default("z-ai/glm-5.3"),
 });
 
 export const env = Env.parse(process.env);
