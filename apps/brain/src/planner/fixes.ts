@@ -155,5 +155,7 @@ export async function fixesFor(watch: Watch, data: SnapshotWithDetail, wallets: 
   const detail = data.rhea.get(positionId.slice(5));
   if (!detail) return [];
   const threshold = watch.kind === "health_below" ? Number(p.threshold) : 1.3;
-  return planRheaFixes({ detail, snapshot: data.snapshot, wallets, target: threshold + 0.2, critical, prefs });
+  // The repair target the user confirmed (the AI proposes it per loan); older watches without one aim 0.2 above the floor.
+  const target = p.target != null ? Number(p.target) : threshold + 0.2;
+  return planRheaFixes({ detail, snapshot: data.snapshot, wallets, target, critical, prefs });
 }

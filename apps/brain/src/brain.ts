@@ -5,13 +5,17 @@ import { logger } from "./log.js";
 import { DEFAULT_PREFS, fixesFor, type PlannerPrefs } from "./planner/fixes.js";
 import { Portfolio, type SnapshotWithDetail } from "./portfolio.js";
 import { Scenario, scenarioLabel } from "./scenario.js";
+import { coinPrices, volatility } from "./sources/coingecko.js";
 import { Store } from "./store.js";
-import type { Alert, Incident, Snapshot } from "./types.js";
-import { evaluate, isNearLimit, type Evaluation } from "./watches/engine.js";
+import type { Alert, Incident, Severity, Snapshot } from "./types.js";
+import { combineSeverity, evaluate, isNearLimit, type Evaluation, type SeverityJudgment } from "./watches/engine.js";
+
+export type { SeverityJudgment };
 
 const log = logger("brain");
 const REMIND_CRITICAL_MS = 15 * 60_000;
-
+/** How often the AI re-judges an open warning. */
+const REJUDGE_MS = 30 * 60_000;
 export interface TickResult {
   data: SnapshotWithDetail;
   evaluations: Evaluation[];
@@ -27,6 +31,8 @@ export class Brain extends EventEmitter {
   readonly scenario: Scenario;
   prefs: PlannerPrefs = DEFAULT_PREFS;
   last: SnapshotWithDetail | null = null;
+  /** Set when the NEAR AI agent is running: judges how serious an alert is from the numbers. */
+  severityJudge: ((facts: Record<string, unknown>) => Promise<SeverityJudgment | null>) | null = null;
   lastEvaluations: Evaluation[] = [];
   private timer: NodeJS.Timeout | null = null;
   private running = false;
@@ -59,7 +65,8 @@ export class Brain extends EventEmitter {
   }
 
   private async runTick(): Promise<TickResult> {
-    const data = await this.portfolio.refresh(this.scenario.get());
+    const coinIds = this.store.listWatches("active").flatMap((w) => ((w.params as Record<string, unknown>).coinId ? [String((w.params as Record<string, unknown>).coinId)] : []));
+    const data = await this.portfolio.refresh(this.scenario.get(), coinIds);
     this.last = data;
     this.store.saveSnapshot(data.snapshot);
     this.emit("snapshot", data.snapshot);
@@ -86,19 +93,26 @@ export class Brain extends EventEmitter {
 
     if (e.triggered) {
       if (!open) {
+        const j = await this.judge(e, data);
         const inc: Incident = {
-          id: randomUUID(), watchId: e.watch.id, state: "open", severity: e.severity, title: e.title, detail: e.detail,
+          id: randomUUID(), watchId: e.watch.id, state: "open", severity: j.severity, title: e.title, detail: e.detail,
           value: e.value, firstSeen: now, lastSeen: now, snoozedUntil: null, acknowledged: false, simulated,
         };
         this.store.saveIncident(inc);
-        this.store.addEvent("incident_opened", { watch: e.watch.label, title: e.title, severity: e.severity, value: e.value, simulated });
-        return this.alertFor(inc, e, data, "new");
+        this.store.kvSet(`judged:${inc.id}`, now);
+        this.store.addEvent("incident_opened", { watch: e.watch.label, title: e.title, severity: j.severity, value: e.value, simulated });
+        return this.alertFor(inc, e, data, "new", j.reason);
       }
-      const escalated = open.severity !== "critical" && e.severity === "critical";
+      // Re-judge an open warning when the rule says critical, or every half hour.
+      const lastJudged = this.store.kvGet<string>(`judged:${open.id}`);
+      const due = open.severity !== "critical" && (e.severity === "critical" || !lastJudged || Date.now() - Date.parse(lastJudged) > REJUDGE_MS);
+      const j = due ? await this.judge(e, data) : null;
+      if (due) this.store.kvSet(`judged:${open.id}`, now);
+      const escalated = open.severity !== "critical" && j?.severity === "critical";
       const updated: Incident = { ...open, lastSeen: now, value: e.value, title: e.title, detail: e.detail, severity: escalated ? "critical" : open.severity };
       this.store.saveIncident(updated);
       if (open.snoozedUntil && open.snoozedUntil > now && !escalated) return null;
-      if (escalated) return this.alertFor(updated, e, data, "escalated");
+      if (escalated) return this.alertFor(updated, e, data, "escalated", j?.reason ?? null);
       const lastAlertAt = this.store.kvGet<string>(`lastAlert:${open.id}`);
       if (updated.severity === "critical" && !updated.acknowledged && (!lastAlertAt || Date.now() - Date.parse(lastAlertAt) > REMIND_CRITICAL_MS)) {
         return this.alertFor(updated, e, data, "reminder");
@@ -122,7 +136,38 @@ export class Brain extends EventEmitter {
     return null;
   }
 
-  private async alertFor(inc: Incident, e: Evaluation, data: SnapshotWithDetail, why: "new" | "escalated" | "reminder"): Promise<Alert> {
+  /** How serious this is: the AI's call from the numbers (10-second limit), else the fixed rule. Hard rails always apply. */
+  private async judge(e: Evaluation, data: SnapshotWithDetail): Promise<{ severity: Severity; reason: string | null }> {
+    if (!this.severityJudge || e.watch.kind === "data_stale") return combineSeverity(e, null);
+    const p = e.watch.params as Record<string, unknown>;
+    const pos = data.snapshot.positions.find((x) => x.id === p.positionId);
+    const main = pos?.collateral.slice().sort((a, b) => b.usd - a.usd)[0]?.symbol.toUpperCase() ?? "";
+    const mainCoin = main.includes("BTC") ? "bitcoin" : main.includes("ETH") ? "ethereum" : main.includes("NEAR") ? "near" : null;
+    const [coins, vol] = await Promise.all([
+      coinPrices(["ethereum", "near", "bitcoin"]).catch(() => ({}) as Record<string, { change24h: number | null }>),
+      mainCoin ? volatility(mainCoin).catch(() => null) : Promise.resolve(null),
+    ]);
+    const facts = {
+      alert: e.title,
+      detail: e.detail,
+      value: e.value,
+      floor: p.threshold ?? null,
+      loan: pos ? { health: pos.healthFactor, liquidationDropPct: pos.liquidationDistance == null ? null : Number((pos.liquidationDistance * 100).toFixed(1)), collateralUsd: Math.round(pos.collateralUsd), debtUsd: Math.round(pos.debtUsd), mainCollateral: main } : null,
+      mainCollateral90d: vol,
+      market24hPct: { ETH: coins.ethereum?.change24h ?? null, NEAR: coins.near?.change24h ?? null, BTC: coins.bitcoin?.change24h ?? null },
+      simulated: !!data.snapshot.scenario,
+    };
+    const judged = await Promise.race([
+      this.severityJudge(facts).catch((err) => {
+        log.warn("severity judge failed; using the rule", { err: String(err).slice(0, 120) });
+        return null;
+      }),
+      new Promise<null>((r) => setTimeout(() => r(null), 10_000)),
+    ]);
+    return combineSeverity(e, judged);
+  }
+
+  private async alertFor(inc: Incident, e: Evaluation, data: SnapshotWithDetail, why: "new" | "escalated" | "reminder", reason: string | null = null): Promise<Alert> {
     const fixes = await fixesFor(e.watch, data, this.wallets, this.prefs, inc.severity === "critical").catch((err) => {
       log.warn("planner failed", { err: String(err).slice(0, 160) });
       return [];
@@ -136,7 +181,7 @@ export class Brain extends EventEmitter {
       createdAt: new Date().toISOString(),
       severity: inc.severity,
       title: `${label ? `[${label}] ` : ""}${prefix}${e.title}`,
-      body: e.detail,
+      body: reason ? `${e.detail} ${reason}` : e.detail,
       fixes,
       simulated: inc.simulated,
     };

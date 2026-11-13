@@ -1,20 +1,31 @@
 import { randomBytes } from "node:crypto";
-import { encodeFunctionData, getAddress, parseAbi } from "viem";
+import { encodeFunctionData, getAddress, type Hex } from "viem";
+import { assetClass, type Plan, type PlanStep } from "../advisor/plans.js";
 import type { Brain } from "../brain.js";
-import { ADDRESSES, FIXTURE_WALLETS } from "../config.js";
+import { ADDRESSES, FIXTURE_WALLETS, type Wallet } from "../config.js";
 import { quote, swapStatus, type Quote } from "../intents/oneclick.js";
 import { logger } from "../log.js";
+import { baseClient, erc20Abi, poolAbi } from "../protocols/aave.js";
 import { rheaAssets } from "../protocols/rhea.js";
+import { toRaw, type TokenInfo } from "../tokens.js";
 import type { FixOption } from "../types.js";
 
 const log = logger("sign");
-const erc20 = parseAbi(["function transfer(address to, uint256 amount) returns (bool)"]);
 const NEAR_GAS = "300000000000000";
+const NEAR_GAS_PART = "50000000000000";
+/** Storage registration on a NEP-141 token: refunded if the account is already registered. */
+const NEAR_STORAGE = "1250000000000000000000";
 
 export type StepState = "waiting" | "ready" | "submitted" | "done" | "failed";
 
+type NearAction =
+  | { type: "FunctionCall"; params: { methodName: string; args: Record<string, unknown>; gas: string; deposit: string } }
+  | { type: "Transfer"; params: { deposit: string } };
+
 export interface SignStep {
-  id: "base_send" | "intents_delivery" | "near_repay" | "manual";
+  id: string;
+  /** evm: signed in MetaMask on Base. near: signed in the NEAR wallet. intents: NEAR Intents delivering. link: done by hand. */
+  kind: "evm" | "near" | "intents" | "link";
   title: string;
   detail: string;
   state: StepState;
@@ -23,7 +34,13 @@ export interface SignStep {
   /** Address/account that must sign (shown to the user, checked in the page). */
   expectedSigner: string | null;
   evmTx?: { chainId: number; to: string; data: string; value: string };
-  nearTx?: { receiverId: string; actions: Array<{ type: "FunctionCall"; params: { methodName: string; args: Record<string, unknown>; gas: string; deposit: string } }> };
+  nearTx?: { receiverId: string; actions: NearAction[] };
+  /** NEAR Intents deposit address this step pays, or delivery this step waits for. */
+  depositAddress?: string;
+  /** Base units sent to the deposit address, so the Snap can match the transfer. */
+  amountRaw?: string;
+  /** Legacy fix flow: rebuild this Rhea repay with the amount NEAR Intents actually delivered. */
+  repayDelivered?: boolean;
   txHash?: string;
   link?: string;
 }
@@ -43,23 +60,22 @@ export interface SignSession {
   done: boolean;
 }
 
-/** Builds Rhea's repay call: deposit USDC with ft_transfer_call and repay it in the same execution. */
-async function rheaRepayTx(amountRaw: bigint) {
+const fc = (methodName: string, args: Record<string, unknown>, deposit = "1", gas = NEAR_GAS_PART): NearAction => ({ type: "FunctionCall", params: { methodName, args, gas, deposit } });
+const fmt = (x: number) => x.toLocaleString("en-US", { maximumFractionDigits: x >= 1000 ? 0 : x >= 1 ? 2 : 6 });
+
+/** Rhea repay: deposit the token with ft_transfer_call and repay it in the same execution. */
+async function rheaRepayTx(tokenId: string, amountRaw: bigint) {
   const assets = await rheaAssets();
-  const extra = BigInt(assets[ADDRESSES.near.usdc]?.config?.extra_decimals ?? 12);
+  const extra = BigInt(assets[tokenId]?.config?.extra_decimals ?? 0);
   const maxAmountInternal = (amountRaw * 10n ** extra).toString();
   return {
-    receiverId: ADDRESSES.near.usdc,
+    receiverId: tokenId,
     actions: [
       {
         type: "FunctionCall" as const,
         params: {
           methodName: "ft_transfer_call",
-          args: {
-            receiver_id: ADDRESSES.near.rhea,
-            amount: amountRaw.toString(),
-            msg: JSON.stringify({ Execute: { actions: [{ Repay: { token_id: ADDRESSES.near.usdc, max_amount: maxAmountInternal } }] } }),
-          },
+          args: { receiver_id: ADDRESSES.near.rhea, amount: amountRaw.toString(), msg: JSON.stringify({ Execute: { actions: [{ Repay: { token_id: tokenId, max_amount: maxAmountInternal } }] } }) },
           gas: NEAR_GAS,
           deposit: "1",
         },
@@ -68,20 +84,41 @@ async function rheaRepayTx(amountRaw: bigint) {
   };
 }
 
+/** Sends a NEAR token to an account. Native NEAR is wrapped to wNEAR first when the receiver is a NEAR Intents deposit. */
+function nearSendTx(token: TokenInfo, amountRaw: bigint, from: string, to: string, wrapNative: boolean) {
+  if (!token.contract && !wrapNative) return { receiverId: to, actions: [{ type: "Transfer" as const, params: { deposit: amountRaw.toString() } }] };
+  const contract = token.contract ?? "wrap.near";
+  return {
+    receiverId: contract,
+    actions: [
+      ...(token.contract ? [] : [fc("storage_deposit", { account_id: from, registration_only: true }, NEAR_STORAGE), fc("near_deposit", {}, amountRaw.toString())]),
+      fc("storage_deposit", { account_id: to, registration_only: true }, NEAR_STORAGE),
+      fc("ft_transfer", { receiver_id: to, amount: amountRaw.toString() }),
+    ],
+  };
+}
+
+/** Sends a Base token (ERC-20 or native ETH) to an address. */
+function evmSendTx(token: TokenInfo, amountRaw: bigint, to: string) {
+  if (!token.contract) return { chainId: 8453, to: getAddress(to), data: "0x", value: `0x${amountRaw.toString(16)}` };
+  return { chainId: 8453, to: getAddress(token.contract), data: encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [getAddress(to), amountRaw] }), value: "0x0" };
+}
+
 export class SignSessions {
   private sessions = new Map<string, SignSession>();
   private pollers = new Map<string, NodeJS.Timeout>();
 
   constructor(private brain: Brain, private onUpdate: (s: SignSession) => void) {}
 
-  /** Deposit addresses of open cross-chain fixes, so the Snap can check transfers against them. */
+  /** Open NEAR Intents deposits on Base, so the Snap can check transfers against them. */
   pendingDeposits() {
     const out: Array<{ depositAddress: string; fromAddress: string; amountRaw: string }> = [];
     for (const s of this.sessions.values()) {
-      const step = s.steps.find((x) => x.id === "base_send");
-      if (!s.done && s.depositAddress && step?.expectedSigner && step.state !== "done" && Date.parse(s.expiresAt) > Date.now()) {
-        const amountHex = step.evmTx?.data.slice(-64) ?? "0";
-        out.push({ depositAddress: s.depositAddress, fromAddress: step.expectedSigner, amountRaw: BigInt(`0x${amountHex}`).toString() });
+      if (s.done || Date.parse(s.expiresAt) < Date.now()) continue;
+      for (const step of s.steps) {
+        if (step.kind === "evm" && step.depositAddress && step.expectedSigner && step.amountRaw && step.state !== "done") {
+          out.push({ depositAddress: step.depositAddress, fromAddress: step.expectedSigner, amountRaw: step.amountRaw });
+        }
       }
     }
     return out;
@@ -94,23 +131,30 @@ export class SignSessions {
     return s;
   }
 
+  private newSession(id: string, title: string, healthBefore: number | null, healthAfter: number | null): SignSession {
+    if (this.brain.wallets === FIXTURE_WALLETS) throw new Error("These are public demo accounts, so there's nothing for you to sign. Add your own wallets in config/wallets.json to review and sign fixes.");
+    return {
+      token: randomBytes(18).toString("base64url"), fixId: id, title, createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+      healthBefore, healthAfter, checks: [], privacyNote: null, steps: [], depositAddress: null, done: false,
+    };
+  }
+
+  private wallet(label: string): Wallet {
+    const w = this.brain.wallets.wallets.find((x) => x.label === label);
+    if (!w) throw new Error(`Wallet "${label}" is no longer configured`);
+    return w;
+  }
+
   /** Creates a one-time session for a fix. Cross-chain fixes get a real (wet) quote here, after checks pass. */
   async create(fix: FixOption): Promise<SignSession> {
     const plan = fix.plan;
     if (!plan) throw new Error("This option has no executable plan");
-    if (this.brain.wallets === FIXTURE_WALLETS) throw new Error("These are public demo accounts, so there's nothing for you to sign. Add your own wallets in config/wallets.json to review and sign fixes.");
-    const wallets = this.brain.wallets.wallets;
-    const token = randomBytes(18).toString("base64url");
-    const session: SignSession = {
-      token, fixId: fix.id, title: fix.title, createdAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
-      healthBefore: fix.healthBefore, healthAfter: fix.healthAfter, checks: [], privacyNote: null, steps: [], depositAddress: null, done: false,
-    };
+    const session = this.newSession(fix.id, fix.title, fix.healthBefore, fix.healthAfter);
 
     if (plan.type === "rhea_repay_from_base") {
-      const from = wallets.find((w) => w.label === plan.fromWallet);
-      const to = wallets.find((w) => w.label === plan.toWallet);
-      if (!from || !to) throw new Error("Wallets for this fix are no longer configured");
+      const from = this.wallet(plan.fromWallet);
+      const to = this.wallet(plan.toWallet);
       const amountRaw = BigInt(Math.round(plan.amountUsdc * 1e6));
       const q = await quote({
         originAsset: ADDRESSES.intents.baseUsdc, destinationAsset: ADDRESSES.intents.nearUsdc,
@@ -121,96 +165,202 @@ export class SignSessions {
       session.depositAddress = q.depositAddress;
       session.privacyNote = "This route links your Base and NEAR addresses on-chain.";
       session.steps.push({
-        id: "base_send", chain: "base", wallet: from.label, expectedSigner: getAddress(from.address), state: "ready",
+        id: "base_send", kind: "evm", chain: "base", wallet: from.label, expectedSigner: getAddress(from.address), state: "ready",
         title: `Send ${q.amountInFormatted} USDC on Base`,
         detail: `From ${from.label} to the NEAR Intents deposit address. Valid until ${q.deadline}.`,
-        evmTx: {
-          chainId: 8453,
-          to: getAddress(ADDRESSES.base.usdc),
-          data: encodeFunctionData({ abi: erc20, functionName: "transfer", args: [getAddress(q.depositAddress!), amountRaw] }),
-          value: "0x0",
-        },
+        evmTx: { chainId: 8453, to: getAddress(ADDRESSES.base.usdc), data: encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [getAddress(q.depositAddress!), amountRaw] }), value: "0x0" },
+        depositAddress: q.depositAddress!, amountRaw: amountRaw.toString(),
       });
       session.steps.push({
-        id: "intents_delivery", chain: null, wallet: null, expectedSigner: null, state: "waiting",
+        id: "intents_delivery", kind: "intents", chain: null, wallet: null, expectedSigner: null, state: "waiting", depositAddress: q.depositAddress!,
         title: `NEAR Intents delivers about ${Number(q.amountOutFormatted).toFixed(2)} USDC`,
         detail: `To ${to.label}, at least ${(Number(q.minAmountOut) / 1e6).toFixed(2)} USDC${q.timeEstimate ? `, usually within ${q.timeEstimate}s` : ""}.`,
       });
       session.steps.push({
-        id: "near_repay", chain: "near", wallet: to.label, expectedSigner: to.address, state: "waiting",
+        id: "near_repay", kind: "near", chain: "near", wallet: to.label, expectedSigner: to.address, state: "waiting", repayDelivered: true,
         title: "Repay USDC on Rhea",
         detail: "Repays what arrived. Your NEAR wallet asks you to approve one transaction.",
-        nearTx: await rheaRepayTx(BigInt(q.minAmountOut)),
+        nearTx: await rheaRepayTx(ADDRESSES.near.usdc, BigInt(q.minAmountOut)),
       });
     } else if (plan.type === "rhea_repay") {
-      const w = wallets.find((x) => x.label === plan.wallet);
-      if (!w) throw new Error("Wallet for this fix is no longer configured");
-      const amountRaw = BigInt(Math.round(plan.amountUsdc * 1e6));
+      const w = this.wallet(plan.wallet);
       session.steps.push({
-        id: "near_repay", chain: "near", wallet: w.label, expectedSigner: w.address, state: "ready",
+        id: "near_repay", kind: "near", chain: "near", wallet: w.label, expectedSigner: w.address, state: "ready",
         title: `Repay ${plan.amountUsdc.toLocaleString("en-US")} USDC on Rhea`,
         detail: "Your NEAR wallet asks you to approve one transaction.",
-        nearTx: await rheaRepayTx(amountRaw),
+        nearTx: await rheaRepayTx(ADDRESSES.near.usdc, BigInt(Math.round(plan.amountUsdc * 1e6))),
       });
     } else {
       session.steps.push({
-        id: "manual", chain: "near", wallet: plan.wallet, expectedSigner: null, state: "ready",
+        id: "manual", kind: "link", chain: "near", wallet: plan.wallet, expectedSigner: null, state: "ready",
         title: `Add ${plan.amountNear.toLocaleString("en-US")} NEAR as collateral in the Rhea app`,
         detail: "Nierwall can't build this transaction yet. Open Rhea, supply NEAR and enable it as collateral.",
         link: "https://app.rhea.finance/",
       });
     }
-    this.sessions.set(token, session);
+    this.sessions.set(session.token, session);
     this.brain.store.addEvent("fix_review_opened", { fix: fix.title, kind: fix.kind });
     return session;
   }
 
-  /** Records a submitted transaction for a step and advances the flow. */
-  async record(token: string, stepId: SignStep["id"], txHash: string) {
+  /**
+   * Creates a session for a checked plan. Swaps and moves get real (wet) quotes now, and each must still
+   * deliver at least 98% of what the check promised. Steps run in order; each opens after the one before is confirmed.
+   */
+  async createFromPlan(plan: Plan): Promise<SignSession> {
+    const loan = plan.loans[0];
+    const session = this.newSession(plan.id, plan.title, loan?.before ?? null, loan?.after ?? null);
+    const links = new Set<string>();
+    let n = 0;
+    const push = (step: Omit<SignStep, "id" | "state">) => session.steps.push({ ...step, id: `s${++n}`, state: n === 1 ? "ready" : "waiting" } as SignStep);
+
+    for (const ps of plan.steps) {
+      const w = this.wallet(ps.wallet);
+      const amountRaw = toRaw(ps.amount, ps.token.decimals);
+      const signer = w.chain === "base" ? getAddress(w.address) : w.address;
+
+      if (ps.type === "swap" || ps.type === "move") {
+        const to = this.wallet(ps.toWallet!);
+        if (to.label !== w.label) links.add(`${w.label} and ${to.label}`);
+        if (ps.route === "transfer") {
+          push({
+            kind: w.chain === "base" ? "evm" : "near", chain: w.chain, wallet: w.label, expectedSigner: signer,
+            title: `Send ${fmt(ps.amount)} ${ps.token.symbol} to ${to.label}`, detail: `A plain transfer between your wallets on ${w.chain === "base" ? "Base" : "NEAR"}.`,
+            ...(w.chain === "base" ? { evmTx: evmSendTx(ps.token, amountRaw, to.address) } : { nearTx: nearSendTx(ps.token, amountRaw, w.address, to.address, false) }),
+          });
+          continue;
+        }
+        const stable = assetClass(ps.token.symbol) === "stable" && assetClass(ps.toToken!.symbol) === "stable";
+        const q = await quote({
+          originAsset: ps.token.assetId, destinationAsset: ps.toToken!.assetId, amount: amountRaw.toString(),
+          refundTo: w.address, recipient: to.address, dry: false, slippageBps: stable ? 50 : 100,
+          expectMinOut: toRaw(ps.minOut!, ps.toToken!.decimals).toString(),
+        });
+        session.checks.push(...q.checks.map((c) => ({ ...c, name: `step ${ps.n}: ${c.name}` })));
+        if (q.checks.some((c) => !c.ok)) throw new Error(`Step ${ps.n} quote failed checks: ${q.checks.filter((c) => !c.ok).map((c) => c.name).join(", ")}. Prices may have moved; ask for the plan again.`);
+        const deposit = q.depositAddress!;
+        push({
+          kind: w.chain === "base" ? "evm" : "near", chain: w.chain, wallet: w.label, expectedSigner: signer, depositAddress: deposit, amountRaw: amountRaw.toString(),
+          title: `Send ${fmt(ps.amount)} ${ps.token.symbol} to NEAR Intents`,
+          detail: `From ${w.label}${!ps.token.contract && w.chain === "near" ? " (wrapped to wNEAR in the same transaction)" : ""}. Valid until ${q.deadline}.`,
+          ...(w.chain === "base" ? { evmTx: evmSendTx(ps.token, amountRaw, deposit) } : { nearTx: nearSendTx(ps.token, amountRaw, w.address, deposit, true) }),
+        });
+        push({
+          kind: "intents", chain: null, wallet: null, expectedSigner: null, depositAddress: deposit,
+          title: `NEAR Intents delivers about ${fmt(Number(q.amountOutFormatted))} ${ps.toToken!.symbol}`,
+          detail: `To ${to.label}, at least ${fmt(ps.minOut!)} ${ps.toToken!.symbol}${q.timeEstimate ? `, usually within ${q.timeEstimate}s` : ""}.`,
+        });
+        continue;
+      }
+
+      if (ps.protocol === "rhea") {
+        if (ps.type === "repay" && ps.token.contract) {
+          push({
+            kind: "near", chain: "near", wallet: w.label, expectedSigner: w.address,
+            title: `Repay ${fmt(ps.amount)} ${ps.token.symbol} on Rhea`, detail: "Your NEAR wallet asks you to approve one transaction.",
+            nearTx: await rheaRepayTx(ps.protocolToken!, amountRaw),
+          });
+        } else {
+          push({
+            kind: "link", chain: "near", wallet: w.label, expectedSigner: null, link: "https://app.rhea.finance/",
+            title: ps.description, detail: "Nierwall can't build this Rhea transaction yet. Do it in the Rhea app, then mark it done here.",
+          });
+        }
+        continue;
+      }
+
+      // Aave V3 on Base: approve, then supply or repay; withdraw needs no approval.
+      const pool = getAddress(ADDRESSES.base.aavePool);
+      const asset = getAddress(ps.protocolToken!);
+      if (ps.type !== "withdraw") {
+        push({
+          kind: "evm", chain: "base", wallet: w.label, expectedSigner: signer,
+          title: `Allow Aave to use ${fmt(ps.amount)} ${ps.token.symbol}`, detail: "An approval for exactly this amount, not unlimited.",
+          evmTx: { chainId: 8453, to: asset, data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [pool, amountRaw] }), value: "0x0" },
+        });
+      }
+      const data: Hex =
+        ps.type === "repay" ? encodeFunctionData({ abi: poolAbi, functionName: "repay", args: [asset, amountRaw, 2n, signer as `0x${string}`] })
+        : ps.type === "add_collateral" ? encodeFunctionData({ abi: poolAbi, functionName: "supply", args: [asset, amountRaw, signer as `0x${string}`, 0] })
+        : encodeFunctionData({ abi: poolAbi, functionName: "withdraw", args: [asset, amountRaw, signer as `0x${string}`] });
+      push({
+        kind: "evm", chain: "base", wallet: w.label, expectedSigner: signer, title: ps.description,
+        detail: ps.type === "withdraw" ? "Nierwall checked the loan stays above your limits after this." : "Uses the approval from the step before.",
+        evmTx: { chainId: 8453, to: pool, data, value: "0x0" },
+      });
+    }
+
+    if (links.size) session.privacyNote = `This plan links ${[...links].join(", ")} on-chain.`;
+    this.sessions.set(session.token, session);
+    this.brain.store.addEvent("plan_review_opened", { plan: plan.title, steps: plan.steps.length });
+    return session;
+  }
+
+  /** Records a submitted transaction for a step and waits for it to confirm. */
+  async record(token: string, stepId: string, txHash: string) {
     const s = this.get(token);
     if (!s) throw new Error("Session expired");
     const step = s.steps.find((x) => x.id === stepId);
     if (!step) throw new Error("Unknown step");
+    if (step.state !== "ready") throw new Error("This step isn't ready yet");
     step.txHash = txHash;
     step.state = "submitted";
-    if (stepId === "base_send") {
-      step.state = "done";
-      const delivery = s.steps.find((x) => x.id === "intents_delivery");
-      if (delivery) delivery.state = "submitted";
-      this.pollDelivery(s);
-    }
-    if (stepId === "near_repay") void this.confirmNear(s, step);
+    if (step.kind === "evm") void this.confirmEvm(s, step);
+    else if (step.kind === "near") void this.confirmNear(s, step);
+    else this.finish(s, step, true); // a manual step marked done
     this.onUpdate(s);
     return s;
   }
 
-  private pollDelivery(s: SignSession) {
-    if (!s.depositAddress || this.pollers.has(s.token)) return;
+  /** Marks a step done (or failed) and opens the next one. */
+  private finish(s: SignSession, step: SignStep, ok: boolean) {
+    step.state = ok ? "done" : "failed";
+    if (!ok) return this.onUpdate(s);
+    const next = s.steps[s.steps.indexOf(step) + 1];
+    if (!next) {
+      s.done = true;
+      this.brain.store.addEvent("fix_completed", { fix: s.title, healthBefore: s.healthBefore, healthAfter: s.healthAfter });
+      void this.brain.refreshNow();
+    } else if (next.kind === "intents") {
+      next.state = "submitted";
+      this.pollDelivery(s, next);
+    } else {
+      next.state = "ready";
+    }
+    this.onUpdate(s);
+  }
+
+  private async confirmEvm(s: SignSession, step: SignStep) {
+    try {
+      const r = await baseClient.waitForTransactionReceipt({ hash: step.txHash as Hex, timeout: 180_000 });
+      this.finish(s, step, r.status === "success");
+    } catch (e) {
+      log.warn("Base tx confirmation failed", { err: String(e).slice(0, 120) });
+      this.finish(s, step, false);
+    }
+  }
+
+  private pollDelivery(s: SignSession, step: SignStep) {
+    const key = `${s.token}:${step.id}`;
+    if (!step.depositAddress || this.pollers.has(key)) return;
     const timer = setInterval(async () => {
       try {
-        const st = await swapStatus(s.depositAddress!);
-        const delivery = s.steps.find((x) => x.id === "intents_delivery")!;
-        delivery.detail = `${delivery.detail.split(" Status:")[0]} Status: ${st.status.toLowerCase().replace(/_/g, " ")}.`;
-        if (st.status === "SUCCESS") {
-          delivery.state = "done";
-          const repay = s.steps.find((x) => x.id === "near_repay");
-          if (repay) {
-            if (st.amountOut) repay.nearTx = await rheaRepayTx(BigInt(st.amountOut));
-            repay.state = "ready";
-          }
+        const st = await swapStatus(step.depositAddress!);
+        step.detail = `${step.detail.split(" Status:")[0]} Status: ${st.status.toLowerCase().replace(/_/g, " ")}.`;
+        if (st.status === "SUCCESS" || st.status === "REFUNDED" || st.status === "FAILED") {
           clearInterval(timer);
-          this.pollers.delete(s.token);
-        } else if (st.status === "REFUNDED" || st.status === "FAILED") {
-          delivery.state = "failed";
-          clearInterval(timer);
-          this.pollers.delete(s.token);
+          this.pollers.delete(key);
+          const next = s.steps[s.steps.indexOf(step) + 1];
+          if (st.status === "SUCCESS" && next?.repayDelivered && st.amountOut) next.nearTx = await rheaRepayTx(ADDRESSES.near.usdc, BigInt(st.amountOut));
+          this.finish(s, step, st.status === "SUCCESS");
+        } else {
+          this.onUpdate(s);
         }
-        this.onUpdate(s);
       } catch (e) {
         log.warn("delivery status failed", { err: String(e).slice(0, 120) });
       }
     }, 10_000);
-    this.pollers.set(s.token, timer);
+    this.pollers.set(key, timer);
   }
 
   private async confirmNear(s: SignSession, step: SignStep) {
@@ -219,17 +369,10 @@ export class SignSessions {
       const body = { jsonrpc: "2.0", id: "1", method: "tx", params: { tx_hash: step.txHash, sender_account_id: step.expectedSigner, wait_until: "FINAL" } };
       const res = await fetch(env.NEAR_RPC_URL, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       const j = (await res.json()) as { result?: { status?: Record<string, unknown> } };
-      const ok = !!j.result?.status && "SuccessValue" in j.result.status;
-      step.state = ok ? "done" : "failed";
-      if (ok) {
-        s.done = true;
-        this.brain.store.addEvent("fix_completed", { fix: s.title, healthBefore: s.healthBefore, healthAfter: s.healthAfter });
-        void this.brain.refreshNow();
-      }
+      this.finish(s, step, !!j.result?.status && "SuccessValue" in j.result.status);
     } catch (e) {
       log.warn("NEAR tx confirmation failed", { err: String(e).slice(0, 120) });
-      step.state = "failed";
+      this.finish(s, step, false);
     }
-    this.onUpdate(s);
   }
 }

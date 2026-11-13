@@ -185,6 +185,7 @@ struct CardView: View {
         case .alert(let a): AlertCardView(card: a, snooze: actions.snooze)
         case .fix(let f): FixCardView(card: f, review: actions.review)
         case .watchConfirm(let w): WatchConfirmView(card: w, confirm: actions.confirmWatch)
+        case .plan(let p): PlanCardView(card: p, review: actions.review)
         case .other: EmptyView()
         }
     }
@@ -296,6 +297,43 @@ struct FixCardView: View {
         .padding(11)
         .background(.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.separator))
+    }
+}
+
+/// A checked plan: what changes, the steps, the cost, and anything to watch out for.
+struct PlanCardView: View {
+    let card: PlanCard
+    let review: (String) -> Void
+    private func hf(_ v: Double?) -> String { v.map { String(format: "%.2f", $0) } ?? "no debt" }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "checklist").foregroundStyle(Palette.near)
+                Text(card.title).font(.callout.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                if card.simulated { Text("SIMULATED").font(.system(size: 9, weight: .bold, design: .monospaced)).foregroundStyle(Palette.warn) }
+            }
+            ForEach(card.loans, id: \.label) { l in
+                Text("\(l.label): health \(hf(l.before)) → \(hf(l.after))").font(.caption.weight(.medium)).monospacedDigit()
+            }
+            if !card.allocation.isEmpty {
+                Text(card.allocation.map { "\($0.cls) \(Int($0.beforePct.rounded()))% → \(Int($0.afterPct.rounded()))%" }.joined(separator: " · "))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            ForEach(card.steps, id: \.n) { s in
+                Text("\(s.n). \(s.description)\(s.manual ? " · by hand" : "")").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            Text("About \(String(format: "$%.2f", card.costUsd)) in fees and slippage, within the \(String(format: "$%.2f", card.maxCostUsd)) the advisor allowed\(card.costReason.isEmpty ? "" : ": \(card.costReason)"). Checked on your Mac with live quotes.")
+                .font(.caption2).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true)
+            ForEach(card.warnings, id: \.self) { w in
+                Text("⚠︎ \(w)").font(.caption2).foregroundStyle(Palette.warn).fixedSize(horizontal: false, vertical: true)
+            }
+            Button("Review & sign") { review(card.planId) }.buttonStyle(.borderedProminent).controlSize(.small)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(11)
+        .background(.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Palette.near.opacity(0.45)))
     }
 }
 

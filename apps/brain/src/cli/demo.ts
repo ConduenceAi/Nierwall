@@ -6,6 +6,11 @@
  */
 import { rmSync } from "node:fs";
 import { resolve } from "node:path";
+import { allocationOf, checkPlan } from "../advisor/plans.js";
+import { dryQuote } from "../advisor/quotes.js";
+import { rheaAssets, rheaTokenBySymbol } from "../protocols/rhea.js";
+import { coinPrices } from "../sources/coingecko.js";
+import { tokenList } from "../tokens.js";
 import { DATA_DIR, loadWallets } from "../config.js";
 import { Brain } from "../brain.js";
 import { Store } from "../store.js";
@@ -102,7 +107,44 @@ async function main() {
   brain.scenario.clear();
   const after = await brain.tick();
   after.alerts.forEach(printAlert);
-  console.log(c.dim(`\n  Incidents: ${store.listIncidents().map((i) => `${i.title} (${i.state})`).join("; ") || "none"}\n`));
+  console.log(c.dim(`\n  Incidents: ${store.listIncidents().map((i) => `${i.title} (${i.state})`).join("; ") || "none"}`));
+
+  console.log(c.bold("\n6. Advisor: a plan the AI could propose, checked on this Mac"));
+  const { holdings } = await brain.portfolio.holdings(null);
+  const alloc = allocationOf(holdings, after.data.snapshot.positions);
+  console.log(`  Net worth ${money(alloc.netWorthUsd)}: ${alloc.classes.map((x) => `${x.cls} ${x.pct}%`).join(" · ")} ${c.dim("(loans netted)")}`);
+  if (source === "fixtures") {
+    const [tokens, assets] = await Promise.all([tokenList(), rheaAssets()]);
+    const check = await checkPlan(
+      {
+        title: "Bring cash to NEAR and repay the Rhea loan",
+        goal: "a safer Rhea loan",
+        // In the app the AI sets this per plan; the demo shows a fixed example.
+        maxCostUsd: 20,
+        costReason: "Worth a few dollars to move a loan away from liquidation",
+        actions: [
+          { type: "move", fromWallet: "Demo cash wallet", toWallet: "Demo NEAR wallet", token: "USDC", amount: 2000 },
+          { type: "repay", wallet: "Demo NEAR wallet", protocol: "rhea", token: "USDC", amount: 1950 },
+        ],
+      },
+      {
+        wallets: config, positions: after.data.snapshot.positions, aave: after.data.aave, rheaToken: (sym) => rheaTokenBySymbol(assets, sym),
+        holdings, tokens, watches: store.listWatches("active"), protectedWallets: [], quote: dryQuote, simulated: false,
+      },
+    );
+    if (check.ok) {
+      console.log(`  ${c.bold(check.plan.title)}`);
+      for (const st of check.plan.steps) console.log(`    ${st.n}. ${st.description}`);
+      for (const l of check.plan.loans) console.log(c.green(`    ${l.label}: health ${l.before?.toFixed(2) ?? "–"} → ${l.after?.toFixed(2) ?? "–"}`));
+      console.log(c.dim(`    About $${check.plan.costUsd.toFixed(2)} in fees and slippage.`));
+      for (const w of check.plan.warnings) console.log(c.amber(`    ! ${w}`));
+    } else {
+      console.log(c.amber(`  Plan rejected: ${check.errors.join(" ")}`));
+    }
+  }
+  const sol = await coinPrices(["solana"]).catch(() => ({}) as Record<string, { usd: number; change24h: number | null }>);
+  if (sol.solana) console.log(c.dim(`  Token watches use CoinGecko for any coin, e.g. SOL is $${sol.solana.usd}${sol.solana.change24h != null ? ` (${sol.solana.change24h.toFixed(1)}% in 24h)` : ""}.`));
+  console.log("");
 }
 
 main().catch((e) => {

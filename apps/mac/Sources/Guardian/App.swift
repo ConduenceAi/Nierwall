@@ -248,7 +248,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func needsClick(_ card: Card) -> Bool {
         switch card {
-        case .fix, .watchConfirm: return true
+        case .fix, .watchConfirm, .plan: return true
         default: return false
         }
     }

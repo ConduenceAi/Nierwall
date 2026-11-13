@@ -2,6 +2,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Hono } from "hono";
 import { z } from "zod";
+import type { Plan } from "../advisor/plans.js";
 import type { Brain } from "../brain.js";
 import { ROOT } from "../config.js";
 import type { FixOption } from "../types.js";
@@ -21,11 +22,14 @@ function findFix(brain: Brain, fixId: string): FixOption | null {
 
 /** Review/sign routes. /api/* requires the Nierwall token; /sign/<one-time token> is the local page. */
 export function registerSignRoutes(app: Hono, brain: Brain, sessions: SignSessions, port: number) {
+  // Fixes (from alerts) and checked plans (from the advisor) share one review route.
   app.post("/api/fixes/:fixId/review", async (c) => {
-    const fix = findFix(brain, c.req.param("fixId"));
-    if (!fix) return c.json({ error: "Fix not found or expired" }, 404);
+    const id = c.req.param("fixId");
+    const plan = id.startsWith("plan_") ? brain.store.kvGet<Plan>(`plan:${id}`) : null;
+    const fix = plan ? null : findFix(brain, id);
+    if (!plan && !fix) return c.json({ error: "Fix not found or expired" }, 404);
     try {
-      const s = await sessions.create(fix);
+      const s = plan ? await sessions.createFromPlan(plan) : await sessions.create(fix!);
       return c.json({ url: `http://127.0.0.1:${port}/sign/${s.token}`, session: s });
     } catch (e) {
       return c.json({ error: String(e instanceof Error ? e.message : e).slice(0, 300) }, 400);
@@ -52,7 +56,7 @@ export function registerSignRoutes(app: Hono, brain: Brain, sessions: SignSessio
 
   app.post("/sign/:token/steps/:stepId", async (c) => {
     const { txHash } = z.object({ txHash: z.string().min(10).max(200) }).parse(await c.req.json());
-    const stepId = z.enum(["base_send", "intents_delivery", "near_repay", "manual"]).parse(c.req.param("stepId"));
+    const stepId = z.string().regex(/^[a-z0-9_]{1,24}$/).parse(c.req.param("stepId"));
     try {
       return c.json(await sessions.record(c.req.param("token"), stepId, txHash));
     } catch (e) {

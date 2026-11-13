@@ -68,11 +68,32 @@ struct WatchCard: Decodable, Equatable {
     let label: String
 }
 
+/// A plan the advisor proposed and the brain checked: steps, loan health and allocation before and after.
+struct PlanCard: Decodable, Equatable {
+    struct Step: Decodable, Equatable { let n: Int; let chain: String; let wallet: String; let description: String; let manual: Bool }
+    struct Loan: Decodable, Equatable { let label: String; let before: Double?; let after: Double?; let floor: Double? }
+    struct Share: Decodable, Equatable { let cls: String; let beforePct: Double; let afterPct: Double }
+    let planId: String
+    let title: String
+    let goal: String
+    let steps: [Step]
+    let loans: [Loan]
+    let allocation: [Share]
+    let netWorthBefore: Double
+    let netWorthAfter: Double
+    let costUsd: Double
+    let maxCostUsd: Double
+    let costReason: String
+    let warnings: [String]
+    let simulated: Bool
+}
+
 enum Card: Decodable, Equatable, Identifiable {
     case position(PositionCard)
     case alert(AlertCard)
     case fix(FixCard)
     case watchConfirm(WatchCard)
+    case plan(PlanCard)
     case other(String)
 
     var id: String {
@@ -81,6 +102,7 @@ enum Card: Decodable, Equatable, Identifiable {
         case .alert(let a): return "a:\(a.alertId)"
         case .fix(let f): return "f:\(f.fix.id)"
         case .watchConfirm(let w): return "w:\(w.watchId)"
+        case .plan(let p): return "pl:\(p.planId)"
         case .other(let t): return "o:\(t)"
         }
     }
@@ -93,6 +115,7 @@ enum Card: Decodable, Equatable, Identifiable {
         case "alert": self = .alert(try AlertCard(from: decoder))
         case "fix": self = .fix(try FixCard(from: decoder))
         case "watch_confirm": self = .watchConfirm(try WatchCard(from: decoder))
+        case "plan": self = .plan(try PlanCard(from: decoder))
         case let t: self = .other(t)
         }
     }

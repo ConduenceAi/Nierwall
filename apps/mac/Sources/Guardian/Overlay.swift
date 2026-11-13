@@ -54,11 +54,12 @@ struct SiriOrb: View {
     var size: CGFloat = 64
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// Shades of green, led by NEAR green (#00EC97).
     static let colors: [Color] = [
-        Color(red: 0.16, green: 0.42, blue: 1.00),
-        Color(red: 0.60, green: 0.30, blue: 1.00),
-        Color(red: 1.00, green: 0.30, blue: 0.60),
-        Color(red: 0.00, green: 0.80, blue: 0.62),
+        Color(red: 0.00, green: 0.93, blue: 0.59),
+        Color(red: 0.06, green: 0.62, blue: 0.40),
+        Color(red: 0.08, green: 0.72, blue: 0.65),
+        Color(red: 0.52, green: 0.85, blue: 0.20),
     ]
     private static let speeds: [Double] = [0.7, -0.95, 1.2, -0.55]
 
@@ -67,7 +68,7 @@ struct SiriOrb: View {
             let t = context.date.timeIntervalSinceReferenceDate
             let e = energy(at: t)
             ZStack {
-                Circle().fill(Color(red: 0.03, green: 0.04, blue: 0.10))
+                Circle().fill(Color(red: 0.01, green: 0.07, blue: 0.05))
                 ForEach(0..<4, id: \.self) { i in blob(i, t: t, e: e) }
                 Circle().fill(RadialGradient(colors: [.white.opacity(0.32), .clear], center: UnitPoint(x: 0.32, y: 0.24), startRadius: 0, endRadius: size * 0.5))
             }
@@ -351,6 +352,9 @@ enum OverlayPreviews {
             setup(model)
             save(mockScreen(model), name, dir)
         }
+        if let card = try? JSONDecoder().decode(PlanCard.self, from: Data(samplePlan.utf8)) {
+            save(PlanCardView(card: card, review: { _ in }).padding(14).frame(width: 390).background(Color(white: 0.93)), "5-plan-card", dir)
+        }
         save(HStack(spacing: 28) {
             SiriOrb(mode: .idle)
             SiriOrb(mode: .listening, level: 0.85)
@@ -359,6 +363,16 @@ enum OverlayPreviews {
             SiriOrb(mode: .listening, level: 0.5, size: 22)
         }.padding(30).background(desktop), "4-orbs", dir)
     }
+
+    private static let samplePlan = """
+    {"type":"plan","planId":"plan_x","title":"Bring cash over and repay Rhea","goal":"safer Rhea loan",
+     "steps":[{"n":1,"chain":"base","wallet":"Cash","description":"Move 2,000 USDC → about 2,000 USDC from Cash to Savings with NEAR Intents (at least 1,990, ~35s)","manual":false},
+              {"n":2,"chain":"near","wallet":"Savings","description":"Repay 1,950 USDC on Rhea from Savings","manual":false}],
+     "loans":[{"positionId":"rhea:Savings","label":"Rhea · Savings","before":1.41,"after":1.83,"floor":1.3}],
+     "allocation":[{"cls":"stable","beforePct":42.1,"afterPct":35.6},{"cls":"NEAR","beforePct":57.9,"afterPct":64.4}],
+     "netWorthBefore":20450,"netWorthAfter":20449,"costUsd":0.42,"maxCostUsd":15,"costReason":"worth a little to move the loan away from liquidation",
+     "warnings":["Moving between Cash and Savings links the two wallets on-chain."],"simulated":false}
+    """
 
     private static let desktop = LinearGradient(colors: [Color(red: 0.16, green: 0.2, blue: 0.3), Color(red: 0.36, green: 0.24, blue: 0.4)], startPoint: .topLeading, endPoint: .bottomTrailing)
 

@@ -12,6 +12,9 @@ export interface QuoteParams {
   dry: boolean;
   slippageBps?: number;
   deadlineMinutes?: number;
+  quoteWaitingTimeMs?: number;
+  /** Minimum output (base units) agreed when a plan was checked; replaces the same-token output check. */
+  expectMinOut?: string;
 }
 
 export interface Quote {
@@ -62,7 +65,7 @@ export async function quote(p: QuoteParams): Promise<Quote> {
     recipientType: "DESTINATION_CHAIN",
     deadline,
     referral: "nierwall",
-    quoteWaitingTimeMs: 3000,
+    quoteWaitingTimeMs: p.quoteWaitingTimeMs ?? 3000,
   };
   const r = await call<{ correlationId: string; signature?: string; quoteRequest: typeof body; quote: Record<string, any> }>("/v0/quote", { method: "POST", body: JSON.stringify(body) });
   const q = r.quote;
@@ -96,8 +99,11 @@ export function checkQuote(q: Quote, p: QuoteParams): Quote["checks"] {
     { name: "recipient", ok: q.recipient === p.recipient, detail: q.recipient === p.recipient ? "Funds go to your own account" : "Recipient does not match your account" },
     { name: "route", ok: q.originAsset === p.originAsset && q.destinationAsset === p.destinationAsset, detail: "Origin and destination tokens match the plan" },
     { name: "amount", ok: amountIn === BigInt(p.amount), detail: "Input amount matches the plan" },
-    // Same-decimals stablecoin route: minimum out must stay within slippage + 0.5% of the input.
-    { name: "minimum output", ok: minOut * 10_000n >= amountIn * (10_000n - slip - 50n), detail: `At least ${q.minAmountOut} base units arrive` },
+    p.expectMinOut != null
+      ? // A checked plan: the price may not have moved more than 2% against it since.
+        { name: "minimum output", ok: minOut * 100n >= BigInt(p.expectMinOut) * 98n, detail: `At least ${q.minAmountOut} base units arrive (plan expected ${p.expectMinOut})` }
+      : // Same-decimals stablecoin route: minimum out must stay within slippage + 0.5% of the input.
+        { name: "minimum output", ok: minOut * 10_000n >= amountIn * (10_000n - slip - 50n), detail: `At least ${q.minAmountOut} base units arrive` },
   ];
   if (!q.dry) {
     const ok = !!q.depositAddress && !!q.deadline && Date.parse(q.deadline) - Date.now() > 10 * 60_000;

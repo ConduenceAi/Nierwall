@@ -1,3 +1,4 @@
+import type { Plan } from "../advisor/plans.js";
 import type { Alert, FixOption, LendingPosition, Watch } from "../types.js";
 
 /** Structured UI blocks rendered by the Mac app (and summarized as text for Telegram/CLI). */
@@ -18,6 +19,22 @@ export type Card =
   | { type: "alert"; alertId: string; incidentId: string; severity: Alert["severity"]; title: string; body: string; simulated: boolean }
   | { type: "fix"; alertId: string; fix: FixOption }
   | { type: "watch_confirm"; watchId: string; label: string }
+  | {
+      type: "plan";
+      planId: string;
+      title: string;
+      goal: string;
+      steps: Array<{ n: number; chain: string; wallet: string; description: string; manual: boolean }>;
+      loans: Plan["loans"];
+      allocation: Plan["allocation"];
+      netWorthBefore: number;
+      netWorthAfter: number;
+      costUsd: number;
+      maxCostUsd: number;
+      costReason: string;
+      warnings: string[];
+      simulated: boolean;
+    }
   | { type: "attestation"; model: string; verified: boolean; signatureKind: string | null; verifiedAt: string | null; detail: string };
 
 export interface Reply {
@@ -43,6 +60,25 @@ export function positionCard(p: LendingPosition, watches: Watch[]): Card {
     collateralUsd: p.collateralUsd,
     debtUsd: p.debtUsd,
     observedAt: p.observedAt,
+    simulated: p.simulated,
+  };
+}
+
+export function planCard(p: Plan): Card {
+  return {
+    type: "plan",
+    planId: p.id,
+    title: p.title,
+    goal: p.goal,
+    steps: p.steps.map((s) => ({ n: s.n, chain: s.chain, wallet: s.wallet, description: s.description, manual: s.execution === "manual" })),
+    loans: p.loans,
+    allocation: p.allocation,
+    netWorthBefore: p.netWorthBefore,
+    netWorthAfter: p.netWorthAfter,
+    costUsd: p.costUsd,
+    maxCostUsd: p.maxCostUsd,
+    costReason: p.costReason,
+    warnings: p.warnings,
     simulated: p.simulated,
   };
 }
