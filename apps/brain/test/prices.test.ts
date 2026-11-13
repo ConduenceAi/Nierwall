@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { encodeFunctionResult } from "viem";
+import { decodeFunctionData, encodeFunctionResult, multicall3Abi, type Hex } from "viem";
 import { evmChain } from "../src/chains.js";
 import { erc20Abi } from "../src/protocols/aave.js";
 import { NATIVE, resolveTokens, tokenPrices } from "../src/snap/pricing.js";
@@ -64,10 +64,17 @@ function answer(fake: Fake, url: URL, rpc: { id: number; params: [{ data: string
   }
   if (url.host === "1click.chaindefuser.com") return [];
   if (rpc) {
-    const result = rpc.params[0].data.startsWith("0x95d89b41")
+    const answer = (data: string): Hex => data.startsWith("0x95d89b41")
       ? encodeFunctionResult({ abi: erc20Abi, functionName: "symbol", result: "DEGEN" })
       : encodeFunctionResult({ abi: erc20Abi, functionName: "decimals", result: 18 });
-    return { jsonrpc: "2.0", id: rpc.id, result };
+    const data = rpc.params[0].data as Hex;
+    // Reads arrive batched through Multicall3: answer each call inside.
+    if (data.startsWith("0x82ad56cb")) {
+      const { args } = decodeFunctionData({ abi: multicall3Abi, data });
+      const calls = args[0] as ReadonlyArray<{ callData: Hex }>;
+      return { jsonrpc: "2.0", id: rpc.id, result: encodeFunctionResult({ abi: multicall3Abi, functionName: "aggregate3", result: calls.map((c) => ({ success: true, returnData: answer(c.callData) })) }) };
+    }
+    return { jsonrpc: "2.0", id: rpc.id, result: answer(data) };
   }
 }
 

@@ -2,10 +2,12 @@ import { randomBytes } from "node:crypto";
 import { encodeFunctionData, getAddress, type Hex } from "viem";
 import { assetClass, type Plan, type PlanStep } from "../advisor/plans.js";
 import type { Brain } from "../brain.js";
-import { ADDRESSES, FIXTURE_WALLETS, type Wallet } from "../config.js";
+import { evmChain, evmClient, evmNetwork, networkName } from "../chains.js";
+import { ADDRESSES, FIXTURE_WALLETS, type EvmNetwork, type Network, type Wallet } from "../config.js";
 import { quote, swapStatus, type Quote } from "../intents/oneclick.js";
 import { logger } from "../log.js";
-import { baseClient, erc20Abi, poolAbi } from "../protocols/aave.js";
+import { usdcOn } from "../planner/fixes.js";
+import { erc20Abi, poolAbi } from "../protocols/aave.js";
 import { rheaAssets } from "../protocols/rhea.js";
 import { toRaw, type TokenInfo } from "../tokens.js";
 import type { FixOption } from "../types.js";
@@ -22,18 +24,27 @@ type NearAction =
   | { type: "FunctionCall"; params: { methodName: string; args: Record<string, unknown>; gas: string; deposit: string } }
   | { type: "Transfer"; params: { deposit: string } };
 
+/** An EVM transaction for MetaMask, with what it needs to add the network if it doesn't know it yet. */
+export interface EvmTx {
+  chainId: number;
+  to: string;
+  data: string;
+  value: string;
+  network: { name: string; symbol: string; rpcUrl: string; explorerUrl: string | null };
+}
+
 export interface SignStep {
   id: string;
-  /** evm: signed in MetaMask on Base. near: signed in the NEAR wallet. intents: NEAR Intents delivering. link: done by hand. */
+  /** evm: signed in MetaMask on its network. near: signed in the NEAR wallet. intents: NEAR Intents delivering. link: done by hand. */
   kind: "evm" | "near" | "intents" | "link";
   title: string;
   detail: string;
   state: StepState;
-  chain: "base" | "near" | null;
+  chain: Network | null;
   wallet: string | null;
   /** Address/account that must sign (shown to the user, checked in the page). */
   expectedSigner: string | null;
-  evmTx?: { chainId: number; to: string; data: string; value: string };
+  evmTx?: EvmTx;
   nearTx?: { receiverId: string; actions: NearAction[] };
   /** NEAR Intents deposit address this step pays, or delivery this step waits for. */
   depositAddress?: string;
@@ -98,10 +109,16 @@ function nearSendTx(token: TokenInfo, amountRaw: bigint, from: string, to: strin
   };
 }
 
-/** Sends a Base token (ERC-20 or native ETH) to an address. */
-function evmSendTx(token: TokenInfo, amountRaw: bigint, to: string) {
-  if (!token.contract) return { chainId: 8453, to: getAddress(to), data: "0x", value: `0x${amountRaw.toString(16)}` };
-  return { chainId: 8453, to: getAddress(token.contract), data: encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [getAddress(to), amountRaw] }), value: "0x0" };
+function evmTx(chainId: number, to: string, data: string, value = "0x0"): EvmTx {
+  const c = evmChain(chainId)!;
+  return { chainId, to, data, value, network: { name: c.name, symbol: c.native.symbol, rpcUrl: c.rpcs[0]!, explorerUrl: c.viem.blockExplorers?.default.url ?? null } };
+}
+
+/** Sends a token (ERC-20 or the network's own coin) to an address, on the token's EVM network. */
+function evmSendTx(token: TokenInfo, amountRaw: bigint, to: string): EvmTx {
+  const chainId = evmNetwork(token.chain as EvmNetwork).id;
+  if (!token.contract) return evmTx(chainId, getAddress(to), "0x", `0x${amountRaw.toString(16)}`);
+  return evmTx(chainId, getAddress(token.contract), encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [getAddress(to), amountRaw] }));
 }
 
 export class SignSessions {
@@ -110,14 +127,16 @@ export class SignSessions {
 
   constructor(private brain: Brain, private onUpdate: (s: SignSession) => void) {}
 
-  /** Open NEAR Intents deposits (Base and NEAR), so the Snap can check transfers against them. */
+  /** Open NEAR Intents deposits (any network), so the Snap can check transfers against them. */
   pendingDeposits() {
-    const out: Array<{ depositAddress: string; fromAddress: string; amountRaw: string }> = [];
+    const out: Array<{ depositAddress: string; fromAddress: string; amountRaw: string; chainId?: number; token?: string | null }> = [];
     for (const s of this.sessions.values()) {
       if (s.done || Date.parse(s.expiresAt) < Date.now()) continue;
       for (const step of s.steps) {
         if ((step.kind === "evm" || step.kind === "near") && step.depositAddress && step.expectedSigner && step.amountRaw && step.state !== "done") {
-          out.push({ depositAddress: step.depositAddress, fromAddress: step.expectedSigner, amountRaw: step.amountRaw });
+          // An ERC-20 deposit calls the token contract; the network's own coin goes straight to the deposit address.
+          const token = step.evmTx ? (step.evmTx.value === "0x0" ? step.evmTx.to : null) : undefined;
+          out.push({ depositAddress: step.depositAddress, fromAddress: step.expectedSigner, amountRaw: step.amountRaw, chainId: step.evmTx?.chainId, token });
         }
       }
     }
@@ -152,23 +171,25 @@ export class SignSessions {
     if (!plan) throw new Error("This option has no executable plan");
     const session = this.newSession(fix.id, fix.title, fix.healthBefore, fix.healthAfter);
 
-    if (plan.type === "rhea_repay_from_base") {
+    if (plan.type === "rhea_repay_from_evm" || plan.type === "rhea_repay_from_base") {
       const from = this.wallet(plan.fromWallet);
       const to = this.wallet(plan.toWallet);
-      const amountRaw = BigInt(Math.round(plan.amountUsdc * 1e6));
+      const network = plan.fromChain ?? "base";
+      const usdc = await usdcOn(network);
+      const amountRaw = toRaw(plan.amountUsdc, usdc.decimals);
       const q = await quote({
-        originAsset: ADDRESSES.intents.baseUsdc, destinationAsset: ADDRESSES.intents.nearUsdc,
+        originAsset: usdc.assetId, destinationAsset: ADDRESSES.intents.nearUsdc,
         amount: amountRaw.toString(), refundTo: from.address, recipient: to.address, dry: false,
       });
       session.checks = q.checks;
       if (q.checks.some((c) => !c.ok)) throw new Error(`Quote failed checks: ${q.checks.filter((c) => !c.ok).map((c) => c.name).join(", ")}`);
       session.depositAddress = q.depositAddress;
-      session.privacyNote = "This route links your Base and NEAR addresses on-chain.";
+      session.privacyNote = `This route links your ${networkName(network)} and NEAR addresses on-chain.`;
       session.steps.push({
-        id: "base_send", kind: "evm", chain: "base", wallet: from.label, expectedSigner: getAddress(from.address), state: "ready",
-        title: `Send ${q.amountInFormatted} USDC on Base`,
+        id: "evm_send", kind: "evm", chain: network, wallet: from.label, expectedSigner: getAddress(from.address), state: "ready",
+        title: `Send ${q.amountInFormatted} USDC on ${networkName(network)}`,
         detail: `From ${from.label} to the NEAR Intents deposit address. Valid until ${q.deadline}.`,
-        evmTx: { chainId: 8453, to: getAddress(ADDRESSES.base.usdc), data: encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [getAddress(q.depositAddress!), amountRaw] }), value: "0x0" },
+        evmTx: evmSendTx(usdc, amountRaw, q.depositAddress!),
         depositAddress: q.depositAddress!, amountRaw: amountRaw.toString(),
       });
       session.steps.push({
@@ -217,16 +238,17 @@ export class SignSessions {
     for (const ps of plan.steps) {
       const w = this.wallet(ps.wallet);
       const amountRaw = toRaw(ps.amount, ps.token.decimals);
-      const signer = w.chain === "base" ? getAddress(w.address) : w.address;
+      const signer = w.chain === "evm" ? getAddress(w.address) : w.address;
+      const kind = ps.chain === "near" ? "near" : "evm";
 
       if (ps.type === "swap" || ps.type === "move") {
         const to = this.wallet(ps.toWallet!);
         if (to.label !== w.label) links.add(`${w.label} and ${to.label}`);
         if (ps.route === "transfer") {
           push({
-            kind: w.chain === "base" ? "evm" : "near", chain: w.chain, wallet: w.label, expectedSigner: signer,
-            title: `Send ${fmt(ps.amount)} ${ps.token.symbol} to ${to.label}`, detail: `A plain transfer between your wallets on ${w.chain === "base" ? "Base" : "NEAR"}.`,
-            ...(w.chain === "base" ? { evmTx: evmSendTx(ps.token, amountRaw, to.address) } : { nearTx: nearSendTx(ps.token, amountRaw, w.address, to.address, false) }),
+            kind, chain: ps.chain, wallet: w.label, expectedSigner: signer,
+            title: `Send ${fmt(ps.amount)} ${ps.token.symbol} to ${to.label}`, detail: `A plain transfer between your wallets on ${networkName(ps.chain)}.`,
+            ...(kind === "evm" ? { evmTx: evmSendTx(ps.token, amountRaw, to.address) } : { nearTx: nearSendTx(ps.token, amountRaw, w.address, to.address, false) }),
           });
           continue;
         }
@@ -240,10 +262,10 @@ export class SignSessions {
         if (q.checks.some((c) => !c.ok)) throw new Error(`Step ${ps.n} quote failed checks: ${q.checks.filter((c) => !c.ok).map((c) => c.name).join(", ")}. Prices may have moved; ask for the plan again.`);
         const deposit = q.depositAddress!;
         push({
-          kind: w.chain === "base" ? "evm" : "near", chain: w.chain, wallet: w.label, expectedSigner: signer, depositAddress: deposit, amountRaw: amountRaw.toString(),
-          title: `Send ${fmt(ps.amount)} ${ps.token.symbol} to NEAR Intents`,
-          detail: `From ${w.label}${!ps.token.contract && w.chain === "near" ? " (wrapped to wNEAR in the same transaction)" : ""}. Valid until ${q.deadline}.`,
-          ...(w.chain === "base" ? { evmTx: evmSendTx(ps.token, amountRaw, deposit) } : { nearTx: nearSendTx(ps.token, amountRaw, w.address, deposit, true) }),
+          kind, chain: ps.chain, wallet: w.label, expectedSigner: signer, depositAddress: deposit, amountRaw: amountRaw.toString(),
+          title: `Send ${fmt(ps.amount)} ${ps.token.symbol}${kind === "evm" ? ` on ${networkName(ps.chain)}` : ""} to NEAR Intents`,
+          detail: `From ${w.label}${!ps.token.contract && kind === "near" ? " (wrapped to wNEAR in the same transaction)" : ""}. Valid until ${q.deadline}.`,
+          ...(kind === "evm" ? { evmTx: evmSendTx(ps.token, amountRaw, deposit) } : { nearTx: nearSendTx(ps.token, amountRaw, w.address, deposit, true) }),
         });
         push({
           kind: "intents", chain: null, wallet: null, expectedSigner: null, depositAddress: deposit,
@@ -276,7 +298,7 @@ export class SignSessions {
         push({
           kind: "evm", chain: "base", wallet: w.label, expectedSigner: signer,
           title: `Allow Aave to use ${fmt(ps.amount)} ${ps.token.symbol}`, detail: "An approval for exactly this amount, not unlimited.",
-          evmTx: { chainId: 8453, to: asset, data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [pool, amountRaw] }), value: "0x0" },
+          evmTx: evmTx(8453, asset, encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [pool, amountRaw] })),
         });
       }
       const data: Hex =
@@ -286,7 +308,7 @@ export class SignSessions {
       push({
         kind: "evm", chain: "base", wallet: w.label, expectedSigner: signer, title: ps.description,
         detail: ps.type === "withdraw" ? "Nierwall checked the loan stays above your limits after this." : "Uses the approval from the step before.",
-        evmTx: { chainId: 8453, to: pool, data, value: "0x0" },
+        evmTx: evmTx(8453, pool, data),
       });
     }
 
@@ -332,10 +354,10 @@ export class SignSessions {
 
   private async confirmEvm(s: SignSession, step: SignStep) {
     try {
-      const r = await baseClient.waitForTransactionReceipt({ hash: step.txHash as Hex, timeout: 180_000 });
+      const r = await evmClient(evmChain(step.evmTx!.chainId)!).waitForTransactionReceipt({ hash: step.txHash as Hex, timeout: 180_000 });
       this.finish(s, step, r.status === "success");
     } catch (e) {
-      log.warn("Base tx confirmation failed", { err: String(e).slice(0, 120) });
+      log.warn("EVM tx confirmation failed", { chainId: step.evmTx?.chainId, err: String(e).slice(0, 120) });
       this.finish(s, step, false);
     }
   }

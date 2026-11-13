@@ -50,7 +50,8 @@ belongs to the orb only while it's open.
 ### 2. It keeps watch and brings you a fix
 
 A background service (the "brain") checks your loans on **Rhea** (NEAR) and **Aave V3** (Base) every minute, and
-every 20 seconds when you're close to a limit. It can watch:
+every 20 seconds when you're close to a limit. It sees every token in your wallets on NEAR and ten EVM networks (see
+[Chains and NEAR Intents](#chains-and-near-intents)). It can watch:
 
 - loan health, and how far prices can fall before liquidation
 - the price of any token ("tell me if SOL drops below $70"), from DefiLlama's free price feed
@@ -77,8 +78,8 @@ Here is an alert from `pnpm demo` (shortened), on a public account during a simu
 
 Fix A moves money between chains with **NEAR Intents**. Before you see it, Nierwall gets a live quote and checks
 it: the money goes to your own account, the route and amount match, the minimum you receive is within slippage,
-and there's enough time to send. A review page then hands each step to your own wallet: MetaMask for Base, your
-NEAR wallet for NEAR. Nierwall follows the transfer and the repayment until both are confirmed.
+and there's enough time to send. A review page then hands each step to your own wallet: MetaMask for EVM networks
+(it switches MetaMask to the right one, and adds it if MetaMask doesn't have it yet), your NEAR wallet for NEAR. Nierwall follows the transfer and the repayment until both are confirmed.
 
 ### 3. It advises, and checks every plan
 
@@ -159,8 +160,31 @@ flowchart LR
 |---|---|
 | **NEAR AI Cloud** | Runs the assistant inside TEEs: `z-ai/glm-5.3-flash` for everyday chat and alert judgment, the larger `z-ai/glm-5.3` for planning. Nierwall verifies both attestations before sending anything, encrypts chats end to end, and verifies each reply's signature. The app shows "NEAR AI · TEE verified". |
 | **Rhea** | NEAR's lending protocol. Nierwall reads your Rhea loans and previews every fix with Rhea's own risk weights. |
-| **NEAR Intents** | Every swap and cross-chain move in a fix or plan (e.g. ETH → USDC on Base, NEAR → USDC, USDC from Base to NEAR), through the 1Click API, with Nierwall's own checks on every quote. Its token list also prices your holdings. |
+| **NEAR Intents** | Every swap and cross-chain move in a fix or plan (e.g. USDC from Arbitrum to NEAR, ETH → USDC on Base, NEAR → USDC), through the 1Click API, with Nierwall's own checks on every quote. Its token list sets which tokens Nierwall reads in your wallets, on all ten EVM networks it supports, and prices them. |
 | **NEAR Connect** | Opens your NEAR wallet to sign the NEAR side of a fix. |
+
+## Chains and NEAR Intents
+
+| | Networks |
+|---|---|
+| **Your wallets:** balances, portfolio mix, spare cash for fixes | NEAR, plus the ten EVM networks NEAR Intents can move money on: Ethereum, Base, Arbitrum, OP Mainnet, Polygon, BNB Chain, Gnosis, Avalanche, Berachain and Scroll |
+| **Loans** | Rhea on NEAR, Aave V3 on Base |
+| **Moving money** in fixes and plans | Between any of those networks, through NEAR Intents |
+| **Checks before you sign** (the Snap) | All of the above, plus Celo, Linea, Sonic, Unichain, Mantle, zkSync Era and Aurora: 17 EVM networks and NEAR |
+
+An EVM wallet is one address, the same on every EVM network, so you add it once and Nierwall reads it on all ten.
+Add `"networks": ["base", "arb"]` to a wallet in `config/wallets.json` to read fewer: each network's node sees the
+address it's asked about.
+
+**NEAR Intents** is how money moves between networks. To move USDC from Arbitrum to your NEAR wallet, you send it
+to a one-time deposit address on Arbitrum, and NEAR Intents delivers USDC to your NEAR account, with a guaranteed
+minimum, usually within a minute. Nierwall asks NEAR Intents' 1Click API for the quote, checks it (the money goes to
+your own account, the route and amount match, the minimum is within slippage, there's time to send), and you sign
+the deposit in your own wallet. Nierwall then follows it until it arrives. The same route swaps tokens, on one
+network or across two.
+
+So when a Rhea loan on NEAR gets close to its limit, the fix can come from wherever your cash is: Nierwall finds
+the network where your EVM wallet holds the most USDC and builds "send it to NEAR, then repay".
 
 ## Privacy and safety
 
@@ -185,8 +209,8 @@ flowchart LR
 | NEAR AI Cloud (TEE) | Your messages and the position data looked up to answer them, with wallet nicknames instead of addresses |
 | OpenAI | Text used to build memory, with nicknames, never addresses |
 | Telegram | Alert text, at the detail level you choose (`TELEGRAM_DETAIL`) |
-| NEAR and Base RPCs, FastNEAR | Reads of your positions and balances |
-| Public nodes (publicnode.com) | A transaction the Snap checks, simulated on its network; set `RPC_URL_<chain id>` to use your own node |
+| Public nodes for each network (publicnode.com, drpc.org as backup, mainnet.base.org), FastNEAR | Your wallet addresses, to read balances and loans; an EVM wallet on each network it's read on |
+| The same public nodes | A transaction the Snap checks, simulated on its network. Set `RPC_URL_<chain id>` in `.env` to use your own node first |
 | DefiLlama | Coin ids and token contract addresses, for prices and price history; never wallet addresses |
 | CoinGecko | Names you search for to find a coin, and the coin ids or token contracts DefiLlama has no price for; never wallet addresses |
 | NEAR Intents | Price checks use stand-in addresses. Your real addresses go only when you open a fix or plan to sign; a cross-chain transfer links those wallets on-chain, and Nierwall warns you first. |
@@ -232,8 +256,9 @@ Every key is optional. Nierwall runs without them, with less:
 | `TELEGRAM_BOT_TOKEN` | Alerts on your phone (create a bot with @BotFather) | Alerts on the Mac only |
 | `COINGECKO_API_KEY` | A higher rate limit for finding coins by name (free demo key) | CoinGecko's public limit, plenty for one person. Prices come from DefiLlama, which needs no key |
 
-Without `config/wallets.json`, Nierwall watches the same public demo accounts as `pnpm demo`. There's nothing to
-sign with those.
+In `config/wallets.json`, an EVM wallet is `"chain": "evm"` with its 0x address, and a NEAR wallet is
+`"chain": "near"` with its account name. Addresses only: Nierwall never needs a key. Without the file, Nierwall
+watches the same public demo accounts as `pnpm demo`. There's nothing to sign with those.
 
 | Try | How | You should see |
 |-----|-----|----------------|
@@ -248,7 +273,7 @@ sign with those.
 | Check a transaction | `pnpm snap`, then open `http://127.0.0.1:7420/snap/install` in a browser with MetaMask Flask | Nierwall's panel in MetaMask's confirmation screen |
 | Keep it running | `pnpm always-on` (undo with `sh ops/uninstall-always-on.sh`) | Brain, memory and app start at login and restart if they crash |
 
-Tests: `pnpm test` runs 56 tests, 4 of them against mainnet. `OFFLINE=1 pnpm test` skips the mainnet ones.
+Tests: `pnpm test` runs 62 brain tests, 4 of them against mainnet (`OFFLINE=1 pnpm test` skips those), and `apps/mac/scripts/check.sh` checks the voice turn-taking.
 
 ## Status
 
@@ -257,7 +282,7 @@ Working on live mainnet data:
 - loan and price readers (Rhea matches Rhea's own SDK exactly, Aave within 2%)
 - watches and alerts
 - fix planning with live NEAR Intents quotes
-- every token in every wallet, valued, and the portfolio mix
+- every token in every wallet on NEAR and ten EVM networks, valued, and the portfolio mix
 - the plan checker, with live quotes (`pnpm demo` runs one)
 - review sessions for plans: real quotes and transactions built, not signed
 - the Snap's transaction analysis, including simulating real swaps on Base
@@ -278,8 +303,9 @@ The full tracker is in [docs/PROGRESS.md](docs/PROGRESS.md). The original design
 - Checks pause while your Mac sleeps or is offline, because the brain runs on your Mac.
 - Automatic fixes on alerts are Rhea-only; for Aave, ask the advisor for a plan (repay, supply and withdraw are built).
 - Adding or withdrawing Rhea collateral opens the Rhea app instead of building the transaction.
-- Holdings and the portfolio mix cover tokens on Base and NEAR that NEAR Intents lists; other chains aren't counted.
-- On networks other than Base and NEAR, the Snap's mix check counts your Base and NEAR holdings only.
+- Wallets are read on NEAR and the ten EVM networks above, for the tokens NEAR Intents lists. Solana, Bitcoin and
+  other non-EVM chains, and EVM networks NEAR Intents added recently (such as Monad), aren't counted yet.
+- Loans are read on Rhea (NEAR) and Aave V3 on Base; Aave on other networks isn't read yet.
 - Installing a local Snap, and MetaMask's full-screen critical warning, need MetaMask Flask.
 
 ## Project layout

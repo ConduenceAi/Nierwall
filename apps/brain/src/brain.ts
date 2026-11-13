@@ -61,6 +61,7 @@ export class Brain extends EventEmitter {
   /** A refresh that reflects changes made just now (scenario, new watch): waits out any in-flight tick first. */
   async refreshNow(): Promise<TickResult> {
     if (this.ticking) await this.ticking.catch(() => undefined);
+    this.portfolio.forgetHoldings();
     return this.tick();
   }
 

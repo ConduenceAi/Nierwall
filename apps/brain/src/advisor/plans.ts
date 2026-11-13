@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import type { Chain, Wallet, WalletsConfig } from "../config.js";
+import { networkName } from "../chains.js";
+import { EVM_NETWORKS, type Network, type Wallet, type WalletsConfig } from "../config.js";
 import type { Holding } from "../holdings.js";
 import type { AaveAccountDetail } from "../protocols/aave.js";
 import { findToken, type TokenInfo } from "../tokens.js";
@@ -9,8 +10,8 @@ import type { Allocation, LendingPosition, Watch } from "../types.js";
 /*
  * The advisor's safety net. The AI (in a TEE) proposes plans as plain steps; this file replays them on the
  * Mac against real balances, loans and live quotes, and rejects anything that doesn't add up. Plans can
- * only move funds between the user's own wallets, into or out of their Aave and Rhea loans, or through
- * NEAR Intents swaps. There is no field for an outside address.
+ * only move funds between the user's own wallets (on any network NEAR Intents supports), into or out of their Aave
+ * and Rhea loans, or through NEAR Intents swaps. There is no field for an outside address.
  */
 
 const amountFields = {
@@ -19,9 +20,12 @@ const amountFields = {
   percent: z.number().positive().max(100).optional(),
 };
 
+/** A network by its NEAR Intents name. For an EVM wallet, which network a step is on; NEAR wallets are always "near". */
+const NetworkName = z.enum([...EVM_NETWORKS, "near"]);
+
 export const PlanAction = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("swap"), wallet: z.string(), from: z.string(), to: z.string(), ...amountFields }),
-  z.object({ type: z.literal("move"), fromWallet: z.string(), toWallet: z.string(), token: z.string(), toToken: z.string().optional(), ...amountFields }),
+  z.object({ type: z.literal("swap"), wallet: z.string(), from: z.string(), to: z.string(), chain: NetworkName.optional(), toChain: NetworkName.optional(), ...amountFields }),
+  z.object({ type: z.literal("move"), fromWallet: z.string(), toWallet: z.string(), token: z.string(), toToken: z.string().optional(), fromChain: NetworkName.optional(), toChain: NetworkName.optional(), ...amountFields }),
   z.object({ type: z.literal("repay"), wallet: z.string(), protocol: z.enum(["aave", "rhea"]), token: z.string(), ...amountFields }),
   z.object({ type: z.literal("add_collateral"), wallet: z.string(), protocol: z.enum(["aave", "rhea"]), token: z.string(), ...amountFields }),
   z.object({ type: z.literal("withdraw"), wallet: z.string(), protocol: z.enum(["aave", "rhea"]), token: z.string(), ...amountFields }),
@@ -54,7 +58,8 @@ export function assetClass(symbol: string): AssetClass {
 export interface PlanStep {
   n: number;
   type: PlanAction["type"];
-  chain: Chain;
+  /** The network this step is signed on (the destination is toToken.chain). */
+  chain: Network;
   /** Wallet that signs this step. */
   wallet: string;
   description: string;
@@ -141,8 +146,10 @@ export function loanHealth(l: { col: Entry[]; debt: Entry[] }): number | null {
 
 const fmt = (x: number, d = 4) => x.toLocaleString("en-US", { maximumFractionDigits: x >= 1000 ? 0 : x >= 1 ? Math.min(d, 2) : d });
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
-/** Left in each wallet's native coin to pay gas. */
-const GAS_RESERVE: Record<Chain, number> = { base: 0.0002, near: 0.05 };
+/** Left in each network's own coin to pay network fees. */
+const GAS_RESERVE: Record<Network, number> = { near: 0.05, eth: 0.002, base: 0.0002, arb: 0.0002, op: 0.0002, scroll: 0.0002, pol: 0.5, bsc: 0.001, gnosis: 0.05, avax: 0.02, bera: 0.05 };
+/** Where each protocol's loans live. */
+const LOAN_NETWORK: Record<"aave" | "rhea", Network> = { aave: "base", rhea: "near" };
 
 /** Replays a proposed plan against current data. Returns the checked plan, or what's wrong with it. */
 export async function checkPlan(input: PlanInput, ctx: PlanContext): Promise<PlanCheck> {
@@ -151,17 +158,20 @@ export async function checkPlan(input: PlanInput, ctx: PlanContext): Promise<Pla
   const wallet = (label: string): Wallet | undefined => ctx.wallets.wallets.find((w) => same(w.label, label));
   const knownWallets = ctx.wallets.wallets.map((w) => w.label).join(", ");
 
-  // Balances by wallet and symbol, and loans, both mutated as steps replay.
+  // Balances by wallet, network and symbol, and loans, both mutated as steps replay.
   const bal = new Map<string, number>();
-  const key = (walletLabel: string, symbol: string) => `${walletLabel}\u0000${symbol.toUpperCase()}`;
-  for (const h of ctx.holdings) bal.set(key(h.walletLabel, h.symbol), (bal.get(key(h.walletLabel, h.symbol)) ?? 0) + h.amount);
+  const key = (walletLabel: string, network: Network, symbol: string) => `${walletLabel}\u0000${network}\u0000${symbol.toUpperCase()}`;
+  for (const h of ctx.holdings) bal.set(key(h.walletLabel, h.chain, h.symbol), (bal.get(key(h.walletLabel, h.chain, h.symbol)) ?? 0) + h.amount);
+  /** All of a token a wallet holds, across networks (reserves are per wallet). */
+  const total = (walletLabel: string, symbol: string) =>
+    [...bal].filter(([k]) => { const [l, , s] = k.split("\u0000"); return same(l!, walletLabel) && same(s!, symbol); }).reduce((sum, [, v]) => sum + v, 0);
   const loans = new Map<string, LoanSim>();
   const toEntry = (t: LendingPosition["collateral"][number]): Entry => ({ symbol: t.symbol, token: t.token, amount: t.amount, price: t.amount > 0 ? t.usd / t.amount : 0, weight: t.weight });
   for (const p of ctx.positions) loans.set(p.id, { id: p.id, protocol: p.protocol, wallet: p.walletLabel, col: p.collateral.map(toEntry), debt: p.debt.map(toEntry) });
   const healthBefore = new Map([...loans].map(([id, l]) => [id, loanHealth(l)]));
 
   // Prices for valuing the portfolio before and after.
-  const price = (chain: Chain, symbol: string): number | null => {
+  const price = (chain: Network, symbol: string): number | null => {
     const h = ctx.holdings.find((x) => x.chain === chain && same(x.symbol, symbol) && x.usd != null && x.amount > 0);
     if (h) return h.usd! / h.amount;
     return findToken(ctx.tokens, chain, symbol)?.priceUsd ?? null;
@@ -169,9 +179,8 @@ export async function checkPlan(input: PlanInput, ctx: PlanContext): Promise<Pla
   const value = (): { total: number; byClass: Record<AssetClass, number> } => {
     const byClass = Object.fromEntries(CLASSES.map((c) => [c, 0])) as Record<AssetClass, number>;
     for (const [k, amount] of bal) {
-      const [label, symbol] = k.split("\u0000") as [string, string];
-      const w = wallet(label);
-      const p = w ? price(w.chain, symbol) : null;
+      const [, network, symbol] = k.split("\u0000") as [string, Network, string];
+      const p = price(network, symbol);
       if (p != null) byClass[assetClass(symbol)] += amount * p;
     }
     for (const l of loans.values()) {
@@ -197,27 +206,53 @@ export async function checkPlan(input: PlanInput, ctx: PlanContext): Promise<Pla
     return a.amountUsd! / unitPrice;
   };
   const spendable = (w: Wallet, token: TokenInfo) => {
-    const have = bal.get(key(w.label, token.symbol)) ?? 0;
-    return token.contract ? have : Math.max(0, have - GAS_RESERVE[w.chain]);
+    const have = bal.get(key(w.label, token.chain, token.symbol)) ?? 0;
+    return token.contract ? have : Math.max(0, have - GAS_RESERVE[token.chain]);
   };
   const debit = (w: Wallet, token: TokenInfo, amount: number, what: string) => {
     const avail = spendable(w, token);
     if (amount > avail * (1 + 1e-9)) {
-      errors.push(`${what}: ${w.label} has ${fmt(avail)} ${token.symbol} available${token.contract ? "" : " after keeping some for gas"}. Add a swap or move first, or use less.`);
+      errors.push(`${what}: ${at(w, token.chain)} has ${fmt(avail)} ${token.symbol} available${token.contract ? "" : " after keeping some for network fees"}. Add a swap or move first, or use less.`);
       return false;
     }
-    bal.set(key(w.label, token.symbol), (bal.get(key(w.label, token.symbol)) ?? 0) - amount);
+    bal.set(key(w.label, token.chain, token.symbol), (bal.get(key(w.label, token.chain, token.symbol)) ?? 0) - amount);
     return true;
   };
-  const credit = (w: Wallet, token: TokenInfo, amount: number) => bal.set(key(w.label, token.symbol), (bal.get(key(w.label, token.symbol)) ?? 0) + amount);
-  const tokenOn = (w: Wallet, symbol: string, what: string) => {
-    const t = findToken(ctx.tokens, w.chain, symbol);
+  const credit = (w: Wallet, token: TokenInfo, amount: number) => bal.set(key(w.label, token.chain, token.symbol), (bal.get(key(w.label, token.chain, token.symbol)) ?? 0) + amount);
+  const tokenOn = (network: Network, symbol: string, what: string) => {
+    const t = findToken(ctx.tokens, network, symbol);
     if (!t) {
-      const known = ctx.tokens.filter((x) => x.chain === w.chain && x.priceUsd).map((x) => x.symbol).slice(0, 14).join(", ");
-      errors.push(`${what}: ${symbol} isn't a token Nierwall can handle on ${w.chain === "base" ? "Base" : "NEAR"}. Known: ${known}.`);
+      const known = ctx.tokens.filter((x) => x.chain === network && x.priceUsd).map((x) => x.symbol).slice(0, 14).join(", ");
+      errors.push(`${what}: ${symbol} isn't a token Nierwall can handle on ${networkName(network)}. Known there: ${known}.`);
     }
     return t;
   };
+  /** The networks a wallet's steps can use. */
+  const networksOf = (w: Wallet): Network[] => (w.chain === "near" ? ["near"] : [...(w.networks ?? EVM_NETWORKS)]);
+  /**
+   * The network a step uses in a wallet: the one named; else, for where funds arrive, `prefer` (the source's network,
+   * so a swap stays put); else where the wallet holds the most of that token (by value); else Base; else the first
+   * network that has the token.
+   */
+  const pick = (w: Wallet, symbol: string, named: Network | undefined, what: string, prefer?: Network): Network | null => {
+    const nets = networksOf(w);
+    if (named) {
+      if (nets.includes(named)) return named;
+      errors.push(`${what}: ${w.label} ${w.chain === "near" ? "is a NEAR wallet" : `isn't read on ${networkName(named)}`}. Its networks: ${nets.join(", ")}.`);
+      return null;
+    }
+    if (nets.length === 1) return nets[0]!;
+    const has = (n: Network) => !!findToken(ctx.tokens, n, symbol);
+    if (prefer && nets.includes(prefer) && has(prefer)) return prefer;
+    const held = nets
+      .map((n) => ({ n, usd: (bal.get(key(w.label, n, symbol)) ?? 0) * (price(n, symbol) ?? 0) }))
+      .filter((x) => x.usd > 0)
+      .sort((a, b) => b.usd - a.usd);
+    if (held[0]) return held[0].n;
+    return nets.find((n) => n === "base" && has(n)) ?? nets.find(has) ?? nets[0]!;
+  };
+  /** "Cash (Arbitrum)" for an EVM wallet, "Savings" for a NEAR one. */
+  const at = (w: Wallet, network: Network) => (w.chain === "evm" ? `${w.label} (${networkName(network)})` : w.label);
   const notProtected = (w: Wallet, what: string) => {
     if (ctx.protectedWallets.some((p) => same(p, w.label))) {
       errors.push(`${what}: ${w.label} is protected; Nierwall won't move funds out of it.`);
@@ -241,20 +276,26 @@ export async function checkPlan(input: PlanInput, ctx: PlanContext): Promise<Pla
         errors.push(`${what}: unknown wallet. Use one of: ${knownWallets}.`);
         continue;
       }
-      if (a.type === "move" && fw.label === tw.label) {
-        errors.push(`${what}: moving within one wallet is a swap.`);
+      const fromSym = a.type === "swap" ? a.from : a.token;
+      const toSym = a.type === "swap" ? a.to : a.toToken ?? a.token;
+      const fromNet = pick(fw, fromSym, a.type === "swap" ? a.chain : a.fromChain, what);
+      if (!fromNet) continue;
+      const toNet = pick(tw, toSym, a.toChain, what, fromNet);
+      if (!toNet) continue;
+      if (a.type === "move" && fw.label === tw.label && fromNet === toNet) {
+        errors.push(`${what}: moving within one wallet on one network is a swap.`);
         continue;
       }
-      const fromTok = tokenOn(fw, a.type === "swap" ? a.from : a.token, what);
-      const toTok = tokenOn(tw, a.type === "swap" ? a.to : a.toToken ?? a.token, what);
+      const fromTok = tokenOn(fromNet, fromSym, what);
+      const toTok = tokenOn(toNet, toSym, what);
       if (!fromTok || !toTok || !notProtected(fw, what)) continue;
-      if (fromTok.assetId === toTok.assetId && fw.chain === tw.chain && a.type === "swap") {
+      if (fromTok.assetId === toTok.assetId && fw.label === tw.label) {
         errors.push(`${what}: ${fromTok.symbol} to ${toTok.symbol} is the same token.`);
         continue;
       }
-      const amount = resolve(a, spendable(fw, fromTok), price(fw.chain, fromTok.symbol), what);
+      const amount = resolve(a, spendable(fw, fromTok), price(fromNet, fromTok.symbol), what);
       if (amount == null || !debit(fw, fromTok, amount, what)) continue;
-      const direct = fw.chain === tw.chain && fromTok.assetId === toTok.assetId && fromTok.symbol === toTok.symbol;
+      const direct = fromTok.assetId === toTok.assetId;
       let q: QuoteEstimate;
       if (direct) {
         q = { expectedOut: amount, minOut: amount, timeEstimate: null };
@@ -267,12 +308,14 @@ export async function checkPlan(input: PlanInput, ctx: PlanContext): Promise<Pla
         }
       }
       credit(tw, toTok, q.minOut);
-      slackUsd += (q.expectedOut - q.minOut) * (price(tw.chain, toTok.symbol) ?? 0);
-      signers.add(fw.label);
+      slackUsd += (q.expectedOut - q.minOut) * (price(toNet, toTok.symbol) ?? 0);
+      signers.add(`${fw.label}\u0000${fromNet}`);
       if (fw.label !== tw.label) warnings.push(`Moving between ${fw.label} and ${tw.label} links the two wallets on-chain.`);
-      const where = fw.label === tw.label ? `in ${fw.label}` : `from ${fw.label} to ${tw.label}`;
+      const where = fw.label === tw.label
+        ? fromNet === toNet ? `in ${at(fw, fromNet)}` : `in ${fw.label}, ${networkName(fromNet)} → ${networkName(toNet)}`
+        : `from ${at(fw, fromNet)} to ${at(tw, toNet)}`;
       steps.push({
-        n, type: a.type, chain: fw.chain, wallet: fw.label, execution: "sign", token: fromTok, amount, toWallet: tw.label, toToken: toTok,
+        n, type: a.type, chain: fromNet, wallet: fw.label, execution: "sign", token: fromTok, amount, toWallet: tw.label, toToken: toTok,
         route: direct ? "transfer" : "intents", expectedOut: q.expectedOut, minOut: q.minOut,
         description: direct
           ? `Send ${fmt(amount)} ${fromTok.symbol} ${where}`
@@ -292,6 +335,7 @@ export async function checkPlan(input: PlanInput, ctx: PlanContext): Promise<Pla
       errors.push(`${what}: Nierwall doesn't watch a ${a.protocol === "aave" ? "Aave" : "Rhea"} loan for ${w.label}.`);
       continue;
     }
+    const loanNet = LOAN_NETWORK[a.protocol];
     const protoName = a.protocol === "aave" ? "Aave" : "Rhea";
     const sym = a.protocol === "rhea" && same(a.token, "NEAR") ? "wNEAR" : a.token;
 
@@ -301,15 +345,15 @@ export async function checkPlan(input: PlanInput, ctx: PlanContext): Promise<Pla
         errors.push(`${what}: ${w.label} doesn't owe ${a.token} on ${protoName}. Debt: ${loan.debt.map((x) => x.symbol).join(", ") || "none"}.`);
         continue;
       }
-      const tok = tokenOn(w, d.symbol, what);
+      const tok = tokenOn(loanNet, d.symbol, what);
       if (!tok) continue;
       let amount = resolve(a, d.amount, d.price, what);
       if (amount == null) continue;
       amount = Math.min(amount, d.amount);
       if (!debit(w, tok, amount, what)) continue;
       d.amount -= amount;
-      signers.add(w.label);
-      steps.push({ n, type: "repay", chain: w.chain, wallet: w.label, execution: "sign", token: tok, amount, protocol: a.protocol, protocolToken: d.token, description: `Repay ${fmt(amount)} ${d.symbol} on ${protoName} from ${w.label}` });
+      signers.add(`${w.label}\u0000${loanNet}`);
+      steps.push({ n, type: "repay", chain: loanNet, wallet: w.label, execution: "sign", token: tok, amount, protocol: a.protocol, protocolToken: d.token, description: `Repay ${fmt(amount)} ${d.symbol} on ${protoName} from ${w.label}` });
       continue;
     }
 
@@ -334,14 +378,14 @@ export async function checkPlan(input: PlanInput, ctx: PlanContext): Promise<Pla
         }
         loan.col.push(entry);
       }
-      const tok = tokenOn(w, entry.symbol, what);
+      const tok = tokenOn(loanNet, entry.symbol, what);
       if (!tok || !notProtected(w, what)) continue;
       const amount = resolve(a, spendable(w, tok), entry.price, what);
       if (amount == null || !debit(w, tok, amount, what)) continue;
       entry.amount += amount;
-      signers.add(w.label);
+      signers.add(`${w.label}\u0000${loanNet}`);
       steps.push({
-        n, type: "add_collateral", chain: w.chain, wallet: w.label, execution: a.protocol === "aave" ? "sign" : "manual", token: tok, amount, protocol: a.protocol, protocolToken: entry.token,
+        n, type: "add_collateral", chain: loanNet, wallet: w.label, execution: a.protocol === "aave" ? "sign" : "manual", token: tok, amount, protocol: a.protocol, protocolToken: entry.token,
         description: `Add ${fmt(amount)} ${entry.symbol} as ${protoName} collateral from ${w.label}${a.protocol === "rhea" ? " (in the Rhea app)" : ""}`,
       });
       continue;
@@ -353,16 +397,16 @@ export async function checkPlan(input: PlanInput, ctx: PlanContext): Promise<Pla
       errors.push(`${what}: ${w.label} has no ${a.token} collateral on ${protoName}.`);
       continue;
     }
-    const tok = tokenOn(w, c.symbol, what);
+    const tok = tokenOn(loanNet, c.symbol, what);
     if (!tok) continue;
     let amount = resolve(a, c.amount, c.price, what);
     if (amount == null) continue;
     amount = Math.min(amount, c.amount);
     c.amount -= amount;
     credit(w, tok, amount);
-    signers.add(w.label);
+    signers.add(`${w.label}\u0000${loanNet}`);
     steps.push({
-      n, type: "withdraw", chain: w.chain, wallet: w.label, execution: a.protocol === "aave" ? "sign" : "manual", token: tok, amount, protocol: a.protocol, protocolToken: c.token,
+      n, type: "withdraw", chain: loanNet, wallet: w.label, execution: a.protocol === "aave" ? "sign" : "manual", token: tok, amount, protocol: a.protocol, protocolToken: c.token,
       description: `Withdraw ${fmt(amount)} ${c.symbol} of ${protoName} collateral to ${w.label}${a.protocol === "rhea" ? " (in the Rhea app)" : ""}`,
     });
   }
@@ -385,7 +429,7 @@ export async function checkPlan(input: PlanInput, ctx: PlanContext): Promise<Pla
   for (const watch of ctx.watches) {
     if (watch.kind !== "balance_min" || watch.status !== "active") continue;
     const p = watch.params as Record<string, unknown>;
-    const left = bal.get(key(String(p.walletLabel), String(p.symbol))) ?? 0;
+    const left = total(String(p.walletLabel), String(p.symbol));
     if (left < Number(p.amount) && steps.some((s) => same(s.wallet, String(p.walletLabel)))) {
       errors.push(`${p.walletLabel} would keep ${fmt(left)} ${p.symbol}, under your ${p.amount} ${p.symbol} reserve.`);
     }
@@ -404,11 +448,11 @@ export async function checkPlan(input: PlanInput, ctx: PlanContext): Promise<Pla
       warnings.push(`${cls === "stable" ? "Stablecoins" : cls} would ${min ? "fall" : "rise"} to ${a.toFixed(1)}% of the portfolio, ${min ? "below your minimum" : "above your maximum"} of ${target}%.`);
     }
   }
-  for (const label of signers) {
-    const w = wallet(label)!;
-    const gas = w.chain === "base" ? "ETH" : "NEAR";
-    const have = ctx.holdings.find((h) => h.walletLabel === label && h.symbol === gas)?.amount ?? 0;
-    if (have < GAS_RESERVE[w.chain]) warnings.push(`${label} has almost no ${gas} to pay network fees.`);
+  for (const signer of signers) {
+    const [label, network] = signer.split("\u0000") as [string, Network];
+    const coin = ctx.tokens.find((t) => t.chain === network && !t.contract)?.symbol ?? (network === "near" ? "NEAR" : "ETH");
+    const have = ctx.holdings.find((h) => h.walletLabel === label && h.chain === network && !h.token.contract)?.amount ?? 0;
+    if (have < GAS_RESERVE[network]) warnings.push(`${at(wallet(label)!, network)} has almost no ${coin} to pay network fees.`);
   }
   if (steps.some((s) => s.execution === "manual")) warnings.push("Some steps are done by hand in the Rhea app.");
   if (ctx.simulated) warnings.push("Prices include a SIMULATED scenario.");

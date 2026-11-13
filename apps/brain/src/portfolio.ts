@@ -1,10 +1,9 @@
-import { getAddress } from "viem";
-import { ADDRESSES, type Wallet, type WalletsConfig } from "./config.js";
+import type { Wallet, WalletsConfig } from "./config.js";
 import { allocationOf } from "./advisor/plans.js";
 import { readHoldings, type Holding } from "./holdings.js";
 import { logger } from "./log.js";
-import { baseTokenBalance, readAave, type AaveAccountDetail } from "./protocols/aave.js";
-import { nearBalances, readRhea, type RheaAccountDetail } from "./protocols/rhea.js";
+import { readAave, type AaveAccountDetail } from "./protocols/aave.js";
+import { readRhea, type RheaAccountDetail } from "./protocols/rhea.js";
 import { coinPrices } from "./sources/coins.js";
 import { fetchPrices } from "./sources/prices.js";
 import type { ScenarioState, Snapshot, WalletBalance } from "./types.js";
@@ -33,11 +32,16 @@ export class Portfolio {
     return data;
   }
 
+  /** The next read goes to the networks again, e.g. after a fix moved money. */
+  forgetHoldings() {
+    this.holdingsCache = null;
+  }
+
   wallet(label: string): Wallet | undefined {
     return this.wallets.wallets.find((w) => w.label === label);
   }
 
-  /** One full refresh: prices, watched lending positions, wallet balances used by fixes, and watched coins. */
+  /** One full refresh: prices, watched lending positions, every wallet's balances on every network, and watched coins. */
   async refresh(scenario: ScenarioState | null, coinIds: string[] = [], withAllocation = false): Promise<SnapshotWithDetail> {
     const errors: string[] = [];
     const aave = new Map<string, AaveAccountDetail>();
@@ -55,7 +59,7 @@ export class Portfolio {
     }
     for (const label of this.wallets.watchAave) {
       const w = this.wallet(label);
-      if (!w || w.chain !== "base") continue;
+      if (!w || w.chain !== "evm") continue;
       jobs.push(readAave(label, w.address, scenario).then((d) => void aave.set(label, d)).catch((e) => void errors.push(`aave:${label}: ${String(e).slice(0, 120)}`)));
     }
     for (const label of this.wallets.watchRhea) {
@@ -64,33 +68,15 @@ export class Portfolio {
       jobs.push(readRhea(label, w.address, scenario).then((d) => void rhea.set(label, d)).catch((e) => void errors.push(`rhea:${label}: ${String(e).slice(0, 120)}`)));
     }
 
-    const balances: WalletBalance[] = [];
-    for (const w of this.wallets.wallets) {
-      if (w.chain === "base") {
-        jobs.push(
-          baseTokenBalance(w.address, getAddress(ADDRESSES.base.usdc))
-            .then((amount) => void balances.push({ walletLabel: w.label, chain: "base", symbol: "USDC", amount, usd: amount * (prices.USDC?.usd ?? 1) }))
-            .catch((e) => void errors.push(`balance:${w.label}: ${String(e).slice(0, 120)}`)),
-        );
-      } else {
-        jobs.push(
-          nearBalances(w.address, [ADDRESSES.near.usdc])
-            .then((b) => {
-              balances.push({ walletLabel: w.label, chain: "near", symbol: "NEAR", amount: b.NEAR ?? 0, usd: (b.NEAR ?? 0) * (prices.NEAR?.usd ?? 0) });
-              balances.push({ walletLabel: w.label, chain: "near", symbol: "USDC", amount: b.USDC ?? 0, usd: (b.USDC ?? 0) * (prices.USDC?.usd ?? 1) });
-            })
-            .catch((e) => void errors.push(`balance:${w.label}: ${String(e).slice(0, 120)}`)),
-        );
-      }
-    }
+    // Every token in every wallet on every network (cached): fixes look for spare cash wherever it is.
+    const held = this.holdings(scenario).catch((e) => ({ holdings: [] as Holding[], errors: [`holdings: ${String(e).slice(0, 120)}`] }));
     await Promise.all(jobs);
-    // Allocation needs every token in every wallet, so it's only read (and cached) when a watch uses it.
+    const h = await held;
+    errors.push(...h.errors);
+    const balances: WalletBalance[] = h.holdings.map((x) => ({ walletLabel: x.walletLabel, chain: x.chain, symbol: x.symbol, amount: x.amount, usd: x.usd ?? 0 }));
+    // A mix that's missing a network would set off allocation alerts for nothing, so it's left out when a read failed.
     let allocation: Snapshot["allocation"];
-    if (withAllocation) {
-      const h = await this.holdings(scenario).catch((e) => ({ holdings: [] as Holding[], errors: [`holdings: ${String(e).slice(0, 120)}`] }));
-      errors.push(...h.errors);
-      if (!h.errors.length) allocation = allocationOf(h.holdings, [...rhea.values(), ...aave.values()].map((d) => d.position));
-    }
+    if (withAllocation && !h.errors.length) allocation = allocationOf(h.holdings, [...rhea.values(), ...aave.values()].map((d) => d.position));
     if (errors.length) log.warn("refresh had errors", { count: errors.length, first: errors[0] });
 
     const snapshot: Snapshot = {

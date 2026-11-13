@@ -40,6 +40,14 @@ describe("watch engine", () => {
     expect(evaluate(watch("price_below", { symbol: "ETH", price: 1900 }), snap()).triggered).toBe(true);
     expect(evaluate(watch("balance_min", { walletLabel: "Cash", symbol: "USDC", amount: 3000 }), snap()).triggered).toBe(true);
   });
+  it("a reserve counts every network, an empty balance is zero, and a failed read is unknown", () => {
+    const reserve = watch("balance_min", { walletLabel: "Cash", symbol: "USDC", amount: 3000 });
+    const twoNetworks = snap({ balances: [...snap().balances, { walletLabel: "Cash", chain: "arb", symbol: "USDC", amount: 1000, usd: 1000 }] });
+    expect(evaluate(reserve, twoNetworks).triggered).toBe(false); // 2,500 on Base + 1,000 on Arbitrum
+    const empty = evaluate(reserve, snap({ balances: [] }));
+    expect([empty.unknown, empty.triggered]).toEqual([false, true]);
+    expect(evaluate(reserve, snap({ errors: ["holdings:Cash:arb: timeout"] })).unknown).toBe(true);
+  });
   it("near-limit speeds up checks", () => {
     expect(isNearLimit(evaluate(watch("health_below", { positionId: "rhea:NEAR wallet", threshold: 1.3 }), snap()))).toBe(true);
     expect(isNearLimit(evaluate(watch("health_below", { positionId: "rhea:NEAR wallet", threshold: 1.0 }), snap()))).toBe(false);

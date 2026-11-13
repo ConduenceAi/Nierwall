@@ -7,10 +7,7 @@ import { toRaw, type TokenInfo } from "../tokens.js";
  * Stand-in accounts for checking prices. A dry quote's price doesn't depend on who receives the funds, so
  * the real addresses only go to NEAR Intents once the user opens a plan to sign it.
  */
-const PLACEHOLDER: Record<TokenInfo["chain"], string> = {
-  base: "0x1111111111111111111111111111111111111111",
-  near: "intents.near",
-};
+const placeholder = (network: TokenInfo["chain"]) => (network === "near" ? "intents.near" : "0x1111111111111111111111111111111111111111");
 
 /** Dry NEAR Intents quote for a plan step, in token units. */
 export async function dryQuote(from: TokenInfo, to: TokenInfo, amount: number): Promise<QuoteEstimate> {
@@ -19,8 +16,8 @@ export async function dryQuote(from: TokenInfo, to: TokenInfo, amount: number): 
     originAsset: from.assetId,
     destinationAsset: to.assetId,
     amount: toRaw(amount, from.decimals).toString(),
-    refundTo: PLACEHOLDER[from.chain],
-    recipient: PLACEHOLDER[to.chain],
+    refundTo: placeholder(from.chain),
+    recipient: placeholder(to.chain),
     dry: true,
     slippageBps: stable ? 50 : 100,
     quoteWaitingTimeMs: 1500,

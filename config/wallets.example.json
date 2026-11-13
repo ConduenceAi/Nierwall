@@ -2,9 +2,9 @@
   "wallets": [
     {
       "label": "Cash",
-      "chain": "base",
+      "chain": "evm",
       "address": "0x0000000000000000000000000000000000000000",
-      "role": "everyday cash, fixes may draw from it"
+      "role": "everyday cash on any EVM network, fixes may draw from it"
     },
     {
       "label": "NEAR wallet",

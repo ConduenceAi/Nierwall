@@ -1,17 +1,18 @@
 import { parseUnits } from "viem";
-import type { Chain } from "./config.js";
+import { EVM_NETWORKS, type Network } from "./config.js";
 import { logger } from "./log.js";
 
 const log = logger("tokens");
 
 /** A token Nierwall can value and swap: one entry of the NEAR Intents (1Click) token list. */
 export interface TokenInfo {
-  chain: Chain;
+  /** Where it lives: NEAR, or an EVM network by its NEAR Intents name (eth, base, arb…). */
+  chain: Network;
   symbol: string;
   decimals: number;
   /** NEAR Intents asset id, used in quotes. */
   assetId: string;
-  /** ERC-20 address (lowercase) on Base or NEP-141 account on NEAR; null for native ETH and native NEAR. */
+  /** ERC-20 address (lowercase) on an EVM network or NEP-141 account on NEAR; null for each network's own coin (ETH, POL, NEAR…). */
   contract: string | null;
   coingeckoId: string | null;
   /** USD price from the NEAR Intents list, refreshed with it. */
@@ -48,19 +49,22 @@ export async function intentsTokens(): Promise<RawToken[]> {
   }
 }
 
-/** Tokens on Base and NEAR that NEAR Intents can swap, with prices. */
+/** Tokens on NEAR and the EVM networks that NEAR Intents can swap, with prices. */
 export async function tokenList(): Promise<TokenInfo[]> {
   await intentsTokens();
   return cache!.tokens;
 }
 
+const NETWORKS = new Set<string>([...EVM_NETWORKS, "near"]);
+
 export function parseTokenList(raw: RawToken[]): TokenInfo[] {
   const tokens: TokenInfo[] = [];
   for (const t of raw) {
-    if (t.blockchain !== "base" && t.blockchain !== "near") continue;
+    // Old entries NEAR Intents keeps for existing balances, like "POL(DEPRECATED)", aren't offered.
+    if (!NETWORKS.has(t.blockchain) || t.symbol.includes("(DEPRECATED)")) continue;
     const price = Number(t.price ?? 0);
-    const contract = t.contractAddress ? (t.blockchain === "base" ? t.contractAddress.toLowerCase() : t.contractAddress) : null;
-    tokens.push({ chain: t.blockchain, symbol: t.symbol, decimals: t.decimals, assetId: t.assetId, contract, coingeckoId: t.coingeckoId ?? null, priceUsd: price > 0 ? price : null });
+    const contract = t.contractAddress ? (t.blockchain === "near" ? t.contractAddress : t.contractAddress.toLowerCase()) : null;
+    tokens.push({ chain: t.blockchain as Network, symbol: t.symbol, decimals: t.decimals, assetId: t.assetId, contract, coingeckoId: t.coingeckoId ?? null, priceUsd: price > 0 ? price : null });
   }
   // Native NEAR swaps through wNEAR: it's wrapped first, then deposited.
   const wnear = tokens.find((t) => t.chain === "near" && t.contract === "wrap.near");
@@ -68,8 +72,8 @@ export function parseTokenList(raw: RawToken[]): TokenInfo[] {
   return tokens;
 }
 
-/** Finds a token on a chain by symbol (case-insensitive) or contract. "NEAR" is native NEAR, "wNEAR" the wrapped token. */
-export function findToken(tokens: TokenInfo[], chain: Chain, query: string): TokenInfo | undefined {
+/** Finds a token on a network by symbol (case-insensitive) or contract. "NEAR" is native NEAR, "wNEAR" the wrapped token. */
+export function findToken(tokens: TokenInfo[], chain: Network, query: string): TokenInfo | undefined {
   const q = query.trim().toLowerCase();
   const onChain = tokens.filter((t) => t.chain === chain);
   return onChain.find((t) => t.symbol.toLowerCase() === q) ?? onChain.find((t) => t.contract === q);

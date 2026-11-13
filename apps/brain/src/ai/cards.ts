@@ -1,4 +1,5 @@
 import type { Plan } from "../advisor/plans.js";
+import { networkName } from "../chains.js";
 import type { Alert, FixOption, LendingPosition, Watch } from "../types.js";
 
 /** Structured UI blocks rendered by the Mac app (and summarized as text for Telegram/CLI). */
@@ -70,7 +71,7 @@ export function planCard(p: Plan): Card {
     planId: p.id,
     title: p.title,
     goal: p.goal,
-    steps: p.steps.map((s) => ({ n: s.n, chain: s.chain, wallet: s.wallet, description: s.description, manual: s.execution === "manual" })),
+    steps: p.steps.map((s) => ({ n: s.n, chain: networkName(s.chain), wallet: s.wallet, description: s.description, manual: s.execution === "manual" })),
     loans: p.loans,
     allocation: p.allocation,
     netWorthBefore: p.netWorthBefore,

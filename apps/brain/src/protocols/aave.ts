@@ -1,15 +1,12 @@
-import { createPublicClient, formatUnits, getAddress, http, parseAbi, type Address } from "viem";
-import { base } from "viem/chains";
-import { ADDRESSES, env } from "../config.js";
+import { formatUnits, getAddress, parseAbi, type Address } from "viem";
+import { evmChain, evmClient } from "../chains.js";
+import { ADDRESSES } from "../config.js";
 import { applyShock } from "../sources/prices.js";
 import type { LendingPosition, ScenarioState, TokenAmount } from "../types.js";
 import { liquidationDrop, mainCollateralClass, riskClass, sumUsd, type Weighted } from "./risk.js";
 
-export const baseClient = createPublicClient({
-  chain: base,
-  transport: http(env.BASE_RPC_URL, { retryCount: 2 }),
-  batch: { multicall: true },
-});
+/** Aave V3 lives on Base here, so its loans and its price oracle are read from Base. */
+export const baseClient = evmClient(evmChain(8453)!);
 
 export const poolAbi = parseAbi([
   "function ADDRESSES_PROVIDER() view returns (address)",

@@ -125,16 +125,19 @@ export function evaluate(watch: Watch, snap: Snapshot): Evaluation {
       };
     }
     case "balance_min": {
-      const bal = snap.balances.find((b) => b.walletLabel === p.walletLabel && b.symbol === p.symbol);
+      // What the wallet holds on all its networks. Empty balances aren't listed, so none means zero, unless a read
+      // of this wallet failed: then the total could be short, and it's unknown.
+      const failed = snap.errors.some((e) => e.startsWith(`holdings:${p.walletLabel}:`) || e.startsWith("holdings: "));
       const min = Number(p.amount);
-      if (!bal) return { ...base, unknown: true, title: `${p.walletLabel}: balance unknown`, detail: "Couldn't read this balance." };
+      if (failed) return { ...base, unknown: true, title: `${p.walletLabel}: balance unknown`, detail: "Couldn't read this balance." };
+      const amount = snap.balances.filter((b) => b.walletLabel === p.walletLabel && b.symbol === p.symbol).reduce((sum, b) => sum + b.amount, 0);
       return {
         ...base,
-        value: bal.amount,
-        triggered: bal.amount < min,
-        recovered: bal.amount >= min,
+        value: amount,
+        triggered: amount < min,
+        recovered: amount >= min,
         title: `${p.walletLabel} is below your ${p.symbol} reserve`,
-        detail: `${p.walletLabel} holds ${bal.amount.toFixed(2)} ${p.symbol} (your minimum ${min}).`,
+        detail: `${p.walletLabel} holds ${amount.toFixed(2)} ${p.symbol} (your minimum ${min}).`,
       };
     }
     case "data_stale": {

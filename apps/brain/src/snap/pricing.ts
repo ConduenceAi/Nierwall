@@ -1,5 +1,5 @@
-import { createPublicClient, getAddress, http, type PublicClient } from "viem";
-import type { EvmChain } from "../chains.js";
+import { getAddress } from "viem";
+import { evmClient, type EvmChain } from "../chains.js";
 import { env } from "../config.js";
 import { erc20Abi } from "../protocols/aave.js";
 import { llamaPrices } from "../sources/defillama.js";
@@ -12,16 +12,6 @@ export interface TokenMeta {
   symbol: string;
   decimals: number;
   priceUsd: number | null;
-}
-
-const clients = new Map<number, PublicClient>();
-export function chainClient(chain: EvmChain): PublicClient {
-  let c = clients.get(chain.id);
-  if (!c) {
-    c = createPublicClient({ transport: http(chain.rpc, { timeout: 8000 }) });
-    clients.set(chain.id, c);
-  }
-  return c;
 }
 
 const cgHeaders = (): Record<string, string> => (env.COINGECKO_API_KEY ? { "x-cg-demo-api-key": env.COINGECKO_API_KEY } : {});
@@ -78,7 +68,7 @@ export async function resolveTokens(chain: EvmChain, addresses: string[]): Promi
   const native = wanted.includes(NATIVE) && !out.get(NATIVE)?.priceUsd;
   const prices = await tokenPrices(chain, native ? [...missing, NATIVE] : missing);
   if (missing.length) {
-    const client = chainClient(chain);
+    const client = evmClient(chain);
     await Promise.all(
       missing.map(async (a) => {
         const [symbol, decimals] = await Promise.all([

@@ -1,4 +1,4 @@
-import type { Chain } from "./config.js";
+import type { EvmNetwork, Network } from "./config.js";
 
 export type Symbol = "ETH" | "NEAR" | "USDC";
 
@@ -25,7 +25,7 @@ export interface LendingPosition {
   /** Stable id, e.g. "rhea:<wallet label>" or "aave:<wallet label>". */
   id: string;
   protocol: "rhea" | "aave";
-  chain: Chain;
+  chain: Network;
   walletLabel: string;
   collateral: TokenAmount[];
   debt: TokenAmount[];
@@ -41,7 +41,7 @@ export interface LendingPosition {
 
 export interface WalletBalance {
   walletLabel: string;
-  chain: Chain;
+  chain: Network;
   symbol: string;
   amount: number;
   usd: number;
@@ -107,8 +107,18 @@ export interface Incident {
 }
 
 /** Machine-readable plan behind a fix, used to build the transactions the user signs. */
+/** USDC from an EVM wallet on one of its networks, through NEAR Intents to the NEAR wallet, then repaid on Rhea. */
+interface RepayFromEvm {
+  amountUsdc: number;
+  fromWallet: string;
+  fromChain?: EvmNetwork;
+  toWallet: string;
+}
+
 export type FixPlan =
-  | { type: "rhea_repay_from_base"; amountUsdc: number; fromWallet: string; toWallet: string }
+  | ({ type: "rhea_repay_from_evm" } & RepayFromEvm)
+  /** The old name, from before fixes could start on any network: always Base. */
+  | ({ type: "rhea_repay_from_base" } & RepayFromEvm)
   | { type: "rhea_repay"; amountUsdc: number; wallet: string }
   | { type: "rhea_add_collateral"; amountNear: number; wallet: string };
 
@@ -118,7 +128,7 @@ export interface FixOption {
   plan?: FixPlan;
   title: string;
   /** Steps the user signs, in order. */
-  steps: Array<{ chain: Chain; wallet: string; description: string }>;
+  steps: Array<{ chain: Network; wallet: string; description: string }>;
   healthBefore: number | null;
   healthAfter: number | null;
   notes: string[];

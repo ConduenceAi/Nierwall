@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { ADDRESSES } from "../config.js";
+import { networkName } from "../chains.js";
+import { ADDRESSES, EVM_NETWORKS, type EvmNetwork } from "../config.js";
 import { collateralToReach, previewRheaAddCollateral, previewRheaRepay, repayToReach, rheaAssets, type RheaAccountDetail } from "../protocols/rhea.js";
 import type { FixOption, Snapshot, Watch } from "../types.js";
 import type { SnapshotWithDetail } from "../portfolio.js";
 import type { WalletsConfig } from "../config.js";
 import { quote } from "../intents/oneclick.js";
+import { findToken, toRaw, tokenList } from "../tokens.js";
 
 export interface PlannerPrefs {
   /** Prefer repaying debt over adding collateral (from memory; default true). */
@@ -53,25 +55,26 @@ export async function planRheaFixes(args: {
           healthBefore: before, healthAfter: after, notes: [], intentsQuote: null,
         });
       } else {
-        // Source USDC from a Base wallet through NEAR Intents.
-        for (const w of wallets.wallets.filter((x) => x.chain === "base")) {
-          const bal = snapshot.balances.find((b) => b.walletLabel === w.label && b.symbol === "USDC")?.amount ?? 0;
+        // Source USDC from an EVM wallet through NEAR Intents, from the network where it holds the most.
+        for (const w of wallets.wallets.filter((x) => x.chain === "evm")) {
           const reserve = prefs.reserves[`${w.label}:USDC`] ?? 0;
-          const spendable = bal - reserve;
           const isProtected = prefs.protectedWallets.includes(w.label) && !critical;
-          if (spendable >= amount && !isProtected) {
-            options.push({
-              id: randomUUID(), kind: "repay", rank: 0, plan: { type: "rhea_repay_from_base", amountUsdc: amount, fromWallet: w.label, toWallet: pos.walletLabel },
-              title: `Move ${fmt(amount, 0)} USDC from ${w.label} (Base) to NEAR, then repay on Rhea`,
-              steps: [
-                { chain: "base", wallet: w.label, description: `Send ${fmt(amount, 0)} USDC to a NEAR Intents deposit address` },
-                { chain: "near", wallet: pos.walletLabel, description: `Repay the USDC that arrives on Rhea` },
-              ],
-              healthBefore: before, healthAfter: after,
-              notes: [`${w.label} keeps ${fmt(bal - amount, 0)} USDC${reserve ? ` (reserve ${fmt(reserve, 0)})` : ""}`, "Links your Base and NEAR addresses on-chain"],
-              intentsQuote: null,
-            });
-          }
+          const best = (w.networks ?? EVM_NETWORKS)
+            .map((n) => ({ n, bal: snapshot.balances.find((b) => b.walletLabel === w.label && b.chain === n && b.symbol === "USDC")?.amount ?? 0 }))
+            .sort((a, b) => b.bal - a.bal)[0];
+          if (!best || best.bal - reserve < amount || isProtected) continue;
+          const where = networkName(best.n);
+          options.push({
+            id: randomUUID(), kind: "repay", rank: 0, plan: { type: "rhea_repay_from_evm", amountUsdc: amount, fromWallet: w.label, fromChain: best.n, toWallet: pos.walletLabel },
+            title: `Move ${fmt(amount, 0)} USDC from ${w.label} (${where}) to NEAR, then repay on Rhea`,
+            steps: [
+              { chain: best.n, wallet: w.label, description: `Send ${fmt(amount, 0)} USDC on ${where} to a NEAR Intents deposit address` },
+              { chain: "near", wallet: pos.walletLabel, description: `Repay the USDC that arrives on Rhea` },
+            ],
+            healthBefore: before, healthAfter: after,
+            notes: [`${w.label} keeps ${fmt(best.bal - amount, 0)} USDC on ${where}${reserve ? ` (reserve ${fmt(reserve, 0)})` : ""}`, `Links your ${where} and NEAR addresses on-chain`],
+            intentsQuote: null,
+          });
         }
         if (!options.some((o) => o.kind === "repay")) {
           options.push({
@@ -123,18 +126,26 @@ export async function planRheaFixes(args: {
   return top;
 }
 
+/** USDC on an EVM network, as NEAR Intents lists it (decimals differ: 18 on BNB Chain). */
+export async function usdcOn(network: EvmNetwork) {
+  const token = findToken(await tokenList(), network, "USDC");
+  if (!token) throw new Error(`NEAR Intents has no USDC on ${networkName(network)}`);
+  return token;
+}
+
 /** Prices the cross-chain leg with a dry NEAR Intents quote (no deposit address is created). */
 async function attachDryQuote(o: FixOption, wallets: WalletsConfig) {
-  if (o.plan?.type !== "rhea_repay_from_base") return;
+  if (o.plan?.type !== "rhea_repay_from_evm" && o.plan?.type !== "rhea_repay_from_base") return;
   const plan = o.plan;
   const from = wallets.wallets.find((w) => w.label === plan.fromWallet);
   const to = wallets.wallets.find((w) => w.label === plan.toWallet);
   if (!from || !to) return;
   try {
+    const usdc = await usdcOn(plan.fromChain ?? "base");
     const q = await quote({
-      originAsset: ADDRESSES.intents.baseUsdc,
+      originAsset: usdc.assetId,
       destinationAsset: ADDRESSES.intents.nearUsdc,
-      amount: String(Math.round(plan.amountUsdc * 1e6)),
+      amount: toRaw(plan.amountUsdc, usdc.decimals).toString(),
       refundTo: from.address,
       recipient: to.address,
       dry: true,

@@ -2,6 +2,8 @@ import { z } from "zod";
 import { allocationOf, checkPlan, PlanInput, type Plan } from "../advisor/plans.js";
 import { dryQuote } from "../advisor/quotes.js";
 import type { Brain } from "../brain.js";
+import { networkName } from "../chains.js";
+import { EVM_NETWORKS } from "../config.js";
 import { fixesFor } from "../planner/fixes.js";
 import { rheaAssets, rheaTokenBySymbol } from "../protocols/rhea.js";
 import { riskClass } from "../protocols/risk.js";
@@ -24,7 +26,7 @@ export const TOOL_DEFS = [
     type: "function" as const,
     function: {
       name: "get_portfolio",
-      description: "Current loans (health factor, collateral, debt, distance to liquidation), every token in each wallet by label with USD values, allocation by asset class (net of loans), prices, and whether a SIMULATED scenario is active.",
+      description: "Current loans (health factor, collateral, debt, distance to liquidation), every token in each wallet by label with USD values and the network it's on (chain: near, or an EVM network such as base, arb, eth), allocation by asset class (net of loans), prices, and whether a SIMULATED scenario is active.",
       parameters: { type: "object", properties: {}, additionalProperties: false },
     },
   },
@@ -117,7 +119,9 @@ export const TOOL_DEFS = [
         "returns verified numbers (health before/after, allocation before/after, cost) or the problems to fix. Never state results for a plan this didn't verify. " +
         "Steps: swap {wallet, from, to} within one wallet; move {fromWallet, toWallet, token, toToken?} between the user's own wallets, across chains if needed; " +
         "repay / add_collateral / withdraw {wallet, protocol: aave|rhea, token}. Give each step exactly one of amount (tokens), amountUsd, or percent " +
-        "(of the available balance; for repay, of the debt; for withdraw, of that collateral). Use token symbols from get_portfolio. Base wallets hold Base tokens, NEAR wallets NEAR tokens. " +
+        "(of the available balance; for repay, of the debt; for withdraw, of that collateral). Use token symbols from get_portfolio. " +
+        "An EVM wallet holds tokens on several networks: name them with chain/toChain (swap) or fromChain/toChain (move), using the chain values from get_portfolio; " +
+        "a swap or move can cross networks, even within one wallet. Left out, Nierwall uses the network where the wallet holds the most of that token. NEAR wallets are always near. Aave is on base, Rhea on near. " +
         "Set maxCostUsd to the most this plan is worth paying in fees and slippage, and costReason to why; plans that cost more are rejected.",
       parameters: {
         type: "object",
@@ -141,6 +145,9 @@ export const TOOL_DEFS = [
                 toWallet: { type: "string" },
                 token: { type: "string" },
                 toToken: { type: "string" },
+                chain: { type: "string", enum: [...EVM_NETWORKS, "near"], description: "swap: the network the from token is on" },
+                fromChain: { type: "string", enum: [...EVM_NETWORKS, "near"], description: "move: the network the token leaves from" },
+                toChain: { type: "string", enum: [...EVM_NETWORKS, "near"], description: "swap or move: the network it arrives on" },
                 protocol: { type: "string", enum: ["aave", "rhea"] },
                 amount: { type: "number" },
                 amountUsd: { type: "number" },
@@ -221,13 +228,13 @@ export async function runTool(name: string, args: Record<string, unknown>, ctx: 
       const { holdings, errors } = await brain.portfolio.holdings(brain.scenario.get());
       const wallets = brain.wallets.wallets.map((w) => ({
         wallet: w.label,
-        chain: w.chain,
+        kind: w.chain === "evm" ? "EVM (same address on every EVM network)" : "NEAR",
         role: w.role || undefined,
         tokens: holdings
           .filter((h) => h.walletLabel === w.label)
           .sort((a, b) => (b.usd ?? 0) - (a.usd ?? 0))
-          .slice(0, 12)
-          .map((h) => ({ symbol: h.symbol, amount: Number(h.amount.toPrecision(6)), usd: h.usd == null ? null : Math.round(h.usd) })),
+          .slice(0, 20)
+          .map((h) => ({ symbol: h.symbol, chain: h.chain, amount: Number(h.amount.toPrecision(6)), usd: h.usd == null ? null : Math.round(h.usd) })),
       }));
       return {
         takenAt: snap.takenAt,
@@ -312,7 +319,7 @@ export async function runTool(name: string, args: Record<string, unknown>, ctx: 
       brain.rememberFixes(fixes);
       for (const fix of fixes) ctx.cards.push({ type: "fix", alertId: "adhoc", fix });
       return fixes.length
-        ? fixes.map((f) => ({ rank: f.rank, title: f.title, healthBefore: f.healthBefore, healthAfter: f.healthAfter, steps: f.steps.map((s) => `${s.chain}: ${s.description}`), notes: f.notes }))
+        ? fixes.map((f) => ({ rank: f.rank, title: f.title, healthBefore: f.healthBefore, healthAfter: f.healthAfter, steps: f.steps.map((s) => `${networkName(s.chain)}: ${s.description}`), notes: f.notes }))
         : { note: "No fixes needed or this position type is read-only (Aave fixes are not supported yet)." };
     }
     case "asset_volatility": {

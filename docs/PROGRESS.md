@@ -10,11 +10,11 @@ Last updated: 2026-11-13 (night, IST). Deadline: 2026-11-14 23:59 UTC. Judging 1
 | 4 | Local API + WebSocket, Telegram bot | API done, Telegram untested | Telegram needs `TELEGRAM_BOT_TOKEN`; link it from the app's "Get alerts on Telegram" button |
 | 5 | Memory service (Graphiti on embedded FalkorDB) | Built, extraction untested | Starts and serves reads; extraction and search need `OPENAI_API_KEY` |
 | 6 | NEAR AI agent | Built, untested live | Attested, end-to-end encrypted, 7 tools, number check, seed-phrase tripwire, template fallback. Needs `NEAR_AI_API_KEY` |
-| 7 | Fixes, NEAR Intents quotes, review and signing page | Done, signing untested | Live 1Click quotes with 5 checks; signing needs your wallets (test with a tiny amount); blocked on demo accounts |
+| 7 | Fixes, NEAR Intents quotes, review and signing page | Done, signing untested | Live 1Click quotes with 5 checks; cash for a Rhea fix comes from whichever EVM network holds the most USDC; MetaMask is switched to each step's network. Signing needs your wallets (test with a tiny amount); blocked on demo accounts |
 | 8 | MetaMask Snap (pre-sign checks) | Built, untested in MetaMask | Analysis tested with real calldata; needs MetaMask Flask in your browser |
 | 9 | Mac menu-bar app (Swift) | Built, launched | Press ⌘⌥ for the Siri-style orb (top center, no background, edge glow): a hands-free conversation where a pause sends, it answers and listens again, you can talk over it, and Esc or silence ends it. Turn-taking checked offline (`apps/mac/scripts/check.sh`); voice, echo cancellation, overlay and notifications still need you at the screen |
 | 10 | Always-on (launchd) + docs | Done | `pnpm always-on` installs it (you run it) |
-| 11 | Holdings, token watches, portfolio mix | Done, live-tested | Every token in every wallet (Base batched read, NEAR via FastNEAR); price watches for any coin, priced by DefiLlama; mix targets as watches |
+| 11 | Holdings, token watches, portfolio mix | Done, live-tested | Every token in every wallet: an EVM wallet on all ten EVM networks NEAR Intents supports (a batched read per network, with a backup node each), NEAR via FastNEAR; price watches for any coin, priced by DefiLlama; mix targets as watches |
 | 12 | Advisor (AI plans, Mac checks) | Checker live-tested, AI untested | Plans replayed against balances, loans and live quotes; review sessions built for swaps, moves, Aave and Rhea. AI sets floors, targets, alert severity and cost limits. Needs `NEAR_AI_API_KEY` to try the AI part |
 | 13 | Snap: transaction simulation | Done, live-tested on Base | "You send / you get", mix targets with alternatives, bad rates, hidden approvals, failing transactions |
 | 14 | Snap on every network | Done, live-tested on Ethereum, Arbitrum, Polygon, Avalanche | Simulation on 13 EVM networks, decoding elsewhere; NEAR transactions from MetaMask (NEP-518) decoded, including Rhea health and full-access keys |
@@ -31,6 +31,14 @@ Last updated: 2026-11-13 (night, IST). Deadline: 2026-11-14 23:59 UTC. Judging 1
 
 ## Log
 
+- **2026-11-13 (late night)** Your wallets on any EVM chain: an EVM wallet is read on all ten networks NEAR
+  Intents supports (Ethereum, Base, Arbitrum, OP Mainnet, Polygon, BNB Chain, Gnosis, Avalanche, Berachain,
+  Scroll), so holdings, the mix and fixes see money wherever it is. A Rhea fix takes USDC from the network that
+  holds the most and sends it to NEAR through NEAR Intents; plans can name the network for each step, swap or move
+  across networks (even within one wallet), and keep the right coin for fees on each. The review page switches
+  MetaMask to each step's network. Every network now has a backup node (drpc.org) after Base's and Ethereum's
+  default nodes went down tonight; Base now reads from mainnet.base.org first. README has a new "Chains and NEAR
+  Intents" section. 62 tests pass; `pnpm demo` live: a demo wallet turns out to hold USDC on Arbitrum.
 - **2026-11-13 (night)** Prices now come from DefiLlama's free coins API (no key, no monthly cap) instead of
   CoinGecko, whose free tier would run out in about a week of checking every minute. That covers watched coins
   and their 24-hour change, 90-day volatility, the backup when the ETH, NEAR and USDC oracles don't answer, and

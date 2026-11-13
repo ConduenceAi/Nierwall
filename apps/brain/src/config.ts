@@ -20,7 +20,8 @@ const Env = z.object({
   TELEGRAM_BOT_TOKEN: z.string().default(""),
   TELEGRAM_DETAIL: z.enum(["generic", "actionable", "detailed"]).default("actionable"),
   NEAR_RPC_URL: z.string().url().default("https://free.rpc.fastnear.com"),
-  BASE_RPC_URL: z.string().url().default("https://base-rpc.publicnode.com"),
+  /** Optional: your own Base node, tried before the built-in ones. Other networks: RPC_URL_<chain id>. */
+  BASE_RPC_URL: z.union([z.literal(""), z.string().url()]).default(""),
   SCENARIO_MODE: z.string().default("1"),
   GUARDIAN_DATA_DIR: z.string().optional(),
   ONECLICK_JWT: z.string().default(""),
@@ -33,20 +34,32 @@ export const env = Env.parse(process.env);
 export const DATA_DIR = resolve(ROOT, env.GUARDIAN_DATA_DIR ?? "data");
 mkdirSync(DATA_DIR, { recursive: true });
 
-export const Chain = z.enum(["base", "near"]);
-export type Chain = z.infer<typeof Chain>;
+/** The EVM networks NEAR Intents can move money on, by their NEAR Intents names. */
+export const EVM_NETWORKS = ["eth", "base", "arb", "op", "pol", "bsc", "gnosis", "avax", "bera", "scroll"] as const;
+export type EvmNetwork = (typeof EVM_NETWORKS)[number];
+/** Where a token lives: NEAR, or one of the EVM networks. */
+export type Network = EvmNetwork | "near";
+
+/**
+ * What kind of wallet: one NEAR account, or one EVM address, which is the same on every EVM network.
+ * "base" is the old name for "evm" and still works in wallets.json.
+ */
+export const Chain = z.enum(["evm", "near", "base"]).transform((c): "evm" | "near" => (c === "base" ? "evm" : c));
+export type Chain = z.output<typeof Chain>;
 
 export const WalletSchema = z.object({
   label: z.string().min(1),
   chain: Chain,
   address: z.string().min(2),
   role: z.string().default(""),
+  /** EVM wallets: the networks to read (default: all of them). Each network's node sees the address it's asked about. */
+  networks: z.array(z.enum(EVM_NETWORKS)).min(1).optional(),
 });
 export type Wallet = z.infer<typeof WalletSchema>;
 
 const WalletsFile = z.object({
   wallets: z.array(WalletSchema),
-  /** Labels of wallets whose Aave V3 (Base) position should be watched. */
+  /** Labels of EVM wallets whose Aave V3 position on Base should be watched. */
   watchAave: z.array(z.string()).default([]),
   /** Labels of wallets whose Rhea (NEAR) position should be watched. */
   watchRhea: z.array(z.string()).default([]),
@@ -59,10 +72,10 @@ export type WalletsConfig = z.infer<typeof WalletsFile>;
  */
 export const FIXTURE_WALLETS: WalletsConfig = {
   wallets: [
-    { label: "Demo Base wallet", chain: "base", address: "0xABBEa473fdDE4409C6A1F0c7C527C1bDa68E6C24", role: "public account, read-only demo fixture" },
+    { label: "Demo Base wallet", chain: "evm", address: "0xABBEa473fdDE4409C6A1F0c7C527C1bDa68E6C24", role: "public account, read-only demo fixture" },
     { label: "Demo NEAR wallet", chain: "near", address: "luckyjacket2695.near", role: "public account, read-only demo fixture" },
     // A public USDC holder on Base (Aave's aUSDC reserve), so the demo can show a cross-chain NEAR Intents fix.
-    { label: "Demo cash wallet", chain: "base", address: "0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB", role: "public account, read-only demo fixture" },
+    { label: "Demo cash wallet", chain: "evm", address: "0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB", role: "public account, read-only demo fixture" },
   ],
   watchAave: ["Demo Base wallet"],
   watchRhea: ["Demo NEAR wallet"],

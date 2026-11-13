@@ -1,6 +1,7 @@
 import { decodeFunctionData, formatUnits, getAddress, isAddress, maxUint256, parseAbi } from "viem";
 import type { Brain } from "../brain.js";
 import { ADDRESSES } from "../config.js";
+import { findToken, tokenList } from "../tokens.js";
 import { poolAbi, readAave, simulateAave, type AaveAccountDetail, type AaveAction } from "../protocols/aave.js";
 import { evmChain } from "../chains.js";
 import { KNOWN_SPENDERS, txEffects } from "./effects.js";
@@ -30,6 +31,9 @@ export interface PendingDeposit {
   depositAddress: string;
   fromAddress: string;
   amountRaw: string;
+  /** EVM deposits: the network and the token contract sent (null for the network's own coin). */
+  chainId?: number;
+  token?: string | null;
 }
 
 const erc20 = parseAbi(["function approve(address spender, uint256 amount) returns (bool)", "function transfer(address to, uint256 amount) returns (bool)"]);
@@ -62,7 +66,7 @@ export async function analyzeTx(brain: Brain, input: SnapTxInput, pending: Pendi
   const from = tx.from && isAddress(tx.from) ? getAddress(tx.from) : null;
   const to = tx.to && isAddress(tx.to) ? getAddress(tx.to) : null;
   const data = (tx.data ?? "0x") as `0x${string}`;
-  const ownWallets = brain.wallets.wallets.filter((w) => w.chain === "base");
+  const ownWallets = brain.wallets.wallets.filter((w) => w.chain === "evm");
   const own = (addr: string) => ownWallets.find((w) => w.address.toLowerCase() === addr.toLowerCase());
   const fromLabel = from ? own(from)?.label ?? null : null;
 
@@ -131,25 +135,28 @@ export async function analyzeTx(brain: Brain, input: SnapTxInput, pending: Pendi
     }
     if (decoded?.functionName === "transfer") {
       const [recipient, amountRaw] = decoded.args as [string, bigint];
-      const isUsdc = onBase && to.toLowerCase() === ADDRESSES.base.usdc.toLowerCase();
-      const amount = isUsdc ? Number(formatUnits(amountRaw, 6)) : null;
+      const usdc = evm?.intents ? findToken(await tokenList().catch(() => []), evm.intents, "USDC") : undefined;
+      const isUsdc = !!usdc?.contract && to.toLowerCase() === usdc.contract;
+      const amount = isUsdc ? Number(formatUnits(amountRaw, usdc!.decimals)) : null;
       const match = pending.find((p) => p.depositAddress.toLowerCase() === recipient.toLowerCase());
-      const mine = pending.find((p) => from && p.fromAddress.toLowerCase() === from.toLowerCase());
+      // A deposit you reviewed from this wallet, of this token on this network.
+      const mine = pending.find((p) => from && p.fromAddress.toLowerCase() === from.toLowerCase() && p.chainId === chain && p.token?.toLowerCase() === to.toLowerCase());
       if (match) {
         findings.push(match.amountRaw === amountRaw.toString()
           ? { severity: "info", title: "Matches your Nierwall fix", detail: "Recipient and amount match the NEAR Intents quote you reviewed." }
           : { severity: "warning", title: "Amount differs from your Nierwall quote", detail: "The deposit address matches, but the amount doesn't. Funds below the minimum get refunded after the deadline." });
-      } else if (mine && isUsdc && mine.amountRaw === amountRaw.toString()) {
+      } else if (mine && mine.amountRaw === amountRaw.toString()) {
         findings.push({ severity: "critical", title: "Recipient doesn't match your Nierwall quote", detail: `You reviewed a deposit to ${short(mine.depositAddress)}, but this sends to ${short(recipient)}. Stop and check where this came from.` });
       } else if (own(recipient)) {
         findings.push({ severity: "info", title: `To your own wallet "${own(recipient)!.label}"`, detail: "Moving funds between your wallets." });
       } else {
         findings.push({ severity: "warning", title: "Recipient isn't one of your wallets", detail: `Sending to ${short(recipient)}. Make sure you trust it.` });
       }
-      // Reserve rule (balance_min watch) for the sending wallet.
+      // Reserve rule (balance_min watch) for the sending wallet: USDC across all its networks.
       if (isUsdc && amount != null && fromLabel) {
         const rule = brain.store.listWatches("active").find((w) => w.kind === "balance_min" && (w.params as any).walletLabel === fromLabel && (w.params as any).symbol === "USDC");
-        const bal = brain.latestSnapshot()?.balances.find((b) => b.walletLabel === fromLabel && b.symbol === "USDC")?.amount;
+        const held = brain.latestSnapshot()?.balances.filter((b) => b.walletLabel === fromLabel && b.symbol === "USDC");
+        const bal = held?.length ? held.reduce((sum, b) => sum + b.amount, 0) : undefined;
         if (rule && bal != null && bal - amount < Number((rule.params as any).amount)) {
           findings.push({ severity: "warning", title: `${fromLabel} would drop below your USDC reserve`, detail: `${bal.toFixed(2)} → ${(bal - amount).toFixed(2)} USDC (minimum ${(rule.params as any).amount}).` });
         }

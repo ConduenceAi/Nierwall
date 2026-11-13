@@ -156,7 +156,7 @@ export function effectFindings(changes: Change[], before: Allocation, watches: W
   return { findings, rows };
 }
 
-/** The user's portfolio mix right now (Base and NEAR holdings plus loans), for checking a transaction against their targets. */
+/** The user's portfolio mix right now (holdings on every network plus loans), for checking a transaction against their targets. */
 export async function currentMix(brain: Brain): Promise<{ before: Allocation; holdings: Holding[] }> {
   const { holdings } = await brain.portfolio.holdings(brain.scenario.get()).catch(() => ({ holdings: [] as Holding[] }));
   return { before: allocationOf(holdings, brain.latestSnapshot()?.positions ?? []), holdings };
@@ -164,12 +164,17 @@ export async function currentMix(brain: Brain): Promise<{ before: Allocation; ho
 
 /** Simulates an EVM transaction and checks its effects. Null when the network's node can't simulate it. */
 export async function txEffects(brain: Brain, chain: EvmChain, tx: { from: string; to: string | null; data: string; value?: string }, contractCall: boolean): Promise<{ findings: SnapFinding[]; rows: Array<{ label: string; value: string }> } | null> {
-  const sim = await simulateTransfers(chain.rpc, tx).catch(() => null);
+  // The first node that can simulate it answers; a node that's down or doesn't support simulation falls through.
+  let sim: Awaited<ReturnType<typeof simulateTransfers>> | null = null;
+  for (const rpc of chain.rpcs) {
+    sim = await simulateTransfers(rpc, tx).catch(() => null);
+    if (sim?.ok) break;
+  }
   if (!sim || !sim.ok) return null;
   if (sim.reverted) return { findings: [{ severity: "warning", title: "This transaction would fail", detail: `Simulated on ${chain.name}'s latest block, it reverts. You'd pay the network fee for nothing.` }], rows: [] };
 
   // EVM addresses are the same on every EVM chain, so any of the user's EVM wallets counts as theirs here.
-  const own = new Set(brain.wallets.wallets.filter((w) => w.chain === "base").map((w) => w.address.toLowerCase()));
+  const own = new Set(brain.wallets.wallets.filter((w) => w.chain === "evm").map((w) => w.address.toLowerCase()));
   own.add(tx.from.toLowerCase());
   const tokens = [...new Set([...sim.transfers.map((t) => t.token), ...sim.approvals.map((a) => a.token)])];
   const meta = await resolveTokens(chain, tokens).catch(() => new Map<string, TokenMeta>());

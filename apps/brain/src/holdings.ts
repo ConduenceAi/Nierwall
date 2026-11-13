@@ -1,7 +1,7 @@
 import { formatUnits, getAddress, parseAbi } from "viem";
-import { ADDRESSES, type Chain, type Wallet } from "./config.js";
+import { evmClient, evmNetwork } from "./chains.js";
+import { ADDRESSES, EVM_NETWORKS, type EvmNetwork, type Network, type Wallet } from "./config.js";
 import { logger } from "./log.js";
-import { baseClient } from "./protocols/aave.js";
 import { nearBalances } from "./protocols/rhea.js";
 import { riskClass } from "./protocols/risk.js";
 import { applyShock } from "./sources/prices.js";
@@ -15,7 +15,8 @@ const STORAGE_YOCTO_PER_BYTE = 10n ** 19n;
 
 export interface Holding {
   walletLabel: string;
-  chain: Chain;
+  /** The network it's on: NEAR, or an EVM network (eth, base, arb…). */
+  chain: Network;
   symbol: string;
   amount: number;
   /** USD value; null when the token has no price. */
@@ -25,8 +26,9 @@ export interface Holding {
 }
 
 /**
- * Every token Nierwall can value and swap, in every wallet: Base through one batched read, NEAR through
- * FastNEAR's account endpoint. Zero balances are skipped. Like the RPCs, these services see the addresses asked about.
+ * Every token Nierwall can value and swap, in every wallet: an EVM wallet on each network NEAR Intents supports (a
+ * batched read per network), a NEAR wallet through FastNEAR's account endpoint. Zero balances are skipped. Like the
+ * RPCs, these services see the addresses asked about.
  */
 export async function readHoldings(wallets: Wallet[], scenario: ScenarioState | null): Promise<{ holdings: Holding[]; errors: string[] }> {
   const tokens = await tokenList();
@@ -37,31 +39,33 @@ export async function readHoldings(wallets: Wallet[], scenario: ScenarioState | 
     const cls = riskClass(token.symbol);
     const shocked = token.priceUsd != null && (cls === "ETH" || cls === "NEAR") ? applyShock(cls as Symbol, token.priceUsd, scenario) : { usd: token.priceUsd, simulated: false };
     if (shocked.usd != null && amount * shocked.usd < 0.01) return; // dust
-    holdings.push({ walletLabel: w.label, chain: w.chain, symbol: token.symbol, amount, usd: shocked.usd == null ? null : amount * shocked.usd, token, simulated: shocked.simulated });
+    holdings.push({ walletLabel: w.label, chain: token.chain, symbol: token.symbol, amount, usd: shocked.usd == null ? null : amount * shocked.usd, token, simulated: shocked.simulated });
   };
 
+  // Each network is read on its own, so one slow node doesn't hold up the rest.
   await Promise.all(
-    wallets.map(async (w) => {
-      try {
-        if (w.chain === "base") {
-          const owner = getAddress(w.address);
-          const erc20s = tokens.filter((t) => t.chain === "base" && t.contract);
-          const [eth, ...raws] = await Promise.all([
-            baseClient.getBalance({ address: owner }),
-            ...erc20s.map((t) => baseClient.readContract({ address: getAddress(t.contract!), abi: erc20, functionName: "balanceOf", args: [owner] }).catch(() => 0n)),
-          ]);
-          const native = tokens.find((t) => t.chain === "base" && !t.contract);
-          if (native) add(w, native, Number(formatUnits(eth, 18)));
-          erc20s.forEach((t, i) => add(w, t, Number(formatUnits(raws[i] ?? 0n, t.decimals))));
-        } else {
-          await readNear(w, tokens, add);
-        }
-      } catch (e) {
-        errors.push(`holdings:${w.label}: ${String(e).slice(0, 120)}`);
-      }
-    }),
+    wallets.flatMap((w) =>
+      w.chain === "evm"
+        ? (w.networks ?? EVM_NETWORKS).map((n) => readEvm(w, n, tokens, add).catch((e) => void errors.push(`holdings:${w.label}:${n}: ${String(e).slice(0, 120)}`)))
+        : [readNear(w, tokens, add).catch((e) => void errors.push(`holdings:${w.label}: ${String(e).slice(0, 120)}`))],
+    ),
   );
   return { holdings, errors };
+}
+
+/** One EVM network: its own coin and every token NEAR Intents lists there, read in one Multicall3 batch. */
+async function readEvm(w: Wallet, network: EvmNetwork, tokens: TokenInfo[], add: (w: Wallet, t: TokenInfo, amount: number) => void) {
+  const owner = getAddress(w.address);
+  const client = evmClient(evmNetwork(network));
+  const listed = tokens.filter((t) => t.chain === network);
+  const erc20s = listed.filter((t) => t.contract);
+  const [coin, ...raws] = await Promise.all([
+    client.getBalance({ address: owner }),
+    ...erc20s.map((t) => client.readContract({ address: getAddress(t.contract!), abi: erc20, functionName: "balanceOf", args: [owner] }).catch(() => 0n)),
+  ]);
+  const native = listed.find((t) => !t.contract);
+  if (native) add(w, native, Number(formatUnits(coin, native.decimals)));
+  erc20s.forEach((t, i) => add(w, t, Number(formatUnits(raws[i] ?? 0n, t.decimals))));
 }
 
 async function readNear(w: Wallet, tokens: TokenInfo[], add: (w: Wallet, t: TokenInfo, amount: number) => void) {

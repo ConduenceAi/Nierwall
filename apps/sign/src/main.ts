@@ -1,8 +1,8 @@
 import { NearConnector } from "@hot-labs/near-connect";
 
 /**
- * Nierwall signing page. Runs on 127.0.0.1, opened from the Mac app. It never sees keys: MetaMask signs the
- * Base step through EIP-6963, and the user's NEAR wallet signs the Rhea step through NEAR Connect.
+ * Nierwall signing page. Runs on 127.0.0.1, opened from the Mac app. It never sees keys: MetaMask signs EVM steps
+ * (on whichever network each step names) through EIP-6963, and the user's NEAR wallet signs NEAR steps through NEAR Connect.
  */
 
 interface Step {
@@ -11,10 +11,16 @@ interface Step {
   title: string;
   detail: string;
   state: "waiting" | "ready" | "submitted" | "done" | "failed";
-  chain: "base" | "near" | null;
+  chain: string | null;
   wallet: string | null;
   expectedSigner: string | null;
-  evmTx?: { chainId: number; to: string; data: string; value: string };
+  evmTx?: {
+    chainId: number;
+    to: string;
+    data: string;
+    value: string;
+    network: { name: string; symbol: string; rpcUrl: string; explorerUrl: string | null };
+  };
   nearTx?: { receiverId: string; actions: any[] };
   txHash?: string;
   link?: string;
@@ -60,14 +66,20 @@ async function sendEvm(step: Step) {
   if (!account || account.toLowerCase() !== step.expectedSigner!.toLowerCase()) {
     throw new Error(`Switch MetaMask to your "${step.wallet}" account (${step.expectedSigner}).`);
   }
-  const chainHex = `0x${step.evmTx!.chainId.toString(16)}`;
+  const tx = step.evmTx!;
+  const chainHex = `0x${tx.chainId.toString(16)}`;
   try {
     await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: chainHex }] });
   } catch (e: any) {
+    // MetaMask doesn't know this network yet: offer to add it.
     if (e?.code === 4902) {
       await provider.request({
         method: "wallet_addEthereumChain",
-        params: [{ chainId: chainHex, chainName: "Base", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: ["https://mainnet.base.org"], blockExplorerUrls: ["https://basescan.org"] }],
+        params: [{
+          chainId: chainHex, chainName: tx.network.name,
+          nativeCurrency: { name: tx.network.symbol, symbol: tx.network.symbol, decimals: 18 },
+          rpcUrls: [tx.network.rpcUrl], ...(tx.network.explorerUrl ? { blockExplorerUrls: [tx.network.explorerUrl] } : {}),
+        }],
       });
     } else throw e;
   }
@@ -106,7 +118,7 @@ function render(s: Session) {
   $("steps").innerHTML = s.steps
     .map((st, i) => {
       const action =
-        st.state === "ready" && st.kind === "evm" ? `<button data-step="${st.id}">Sign with MetaMask</button>` :
+        st.state === "ready" && st.kind === "evm" ? `<button data-step="${st.id}">Sign with MetaMask on ${esc(st.evmTx?.network.name ?? "EVM")}</button>` :
         st.state === "ready" && st.kind === "near" && st.nearTx ? `<button data-step="${st.id}">Sign with your NEAR wallet</button>` :
         st.state === "ready" && st.link ? `<a class="button" href="${esc(st.link)}" target="_blank" rel="noopener">Open Rhea</a> <button data-step="${st.id}" data-manual="1">I've done this</button>` : "";
       const hash = st.txHash ? `<div class="hash">tx ${esc(st.txHash.slice(0, 18))}…</div>` : "";

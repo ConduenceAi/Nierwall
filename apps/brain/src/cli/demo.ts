@@ -8,6 +8,7 @@ import { rmSync } from "node:fs";
 import { resolve } from "node:path";
 import { allocationOf, checkPlan } from "../advisor/plans.js";
 import { dryQuote } from "../advisor/quotes.js";
+import { networkName } from "../chains.js";
 import { rheaAssets, rheaTokenBySymbol } from "../protocols/rhea.js";
 import { coinPrices, type CoinPrice } from "../sources/coins.js";
 import { tokenList } from "../tokens.js";
@@ -31,7 +32,12 @@ function printSnapshot(s: Snapshot) {
   const prices = Object.values(s.prices).map((p) => `${p!.symbol} $${p!.usd.toLocaleString("en-US", { maximumFractionDigits: 4 })}${p!.simulated ? c.amber("*") : ""} ${c.dim(`(${p!.source})`)}`);
   console.log(`  Prices: ${prices.join("   ")}`);
   for (const p of s.positions) printPosition(p);
-  for (const b of s.balances) console.log(c.dim(`  ${b.walletLabel}: ${b.amount.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${b.symbol}`));
+  // Each wallet's largest balances, on whichever networks they are.
+  for (const w of new Set(s.balances.map((b) => b.walletLabel))) {
+    const held = s.balances.filter((b) => b.walletLabel === w).sort((a, b) => b.usd - a.usd);
+    const list = held.slice(0, 4).map((b) => `${b.amount.toLocaleString("en-US", { maximumFractionDigits: b.amount < 1 ? 4 : 2 })} ${b.symbol} on ${networkName(b.chain)}`);
+    console.log(c.dim(`  ${w}: ${list.join(", ")}${held.length > 4 ? `, and ${held.length - 4} more` : ""}`));
+  }
   if (s.errors.length) console.log(c.amber(`  Data problems: ${s.errors.join("; ")}`));
 }
 
@@ -52,7 +58,7 @@ function printAlert(a: Alert) {
   for (const f of a.fixes) {
     const hf = f.healthAfter != null ? ` → health ${f.healthAfter.toFixed(2)}` : "";
     console.log(`    ${c.cyan(`${String.fromCharCode(64 + f.rank)}.`)} ${f.title}${hf}`);
-    for (const s of f.steps) console.log(c.dim(`       - [${s.chain}] ${s.description} (sign in ${s.wallet})`));
+    for (const s of f.steps) console.log(c.dim(`       - [${networkName(s.chain)}] ${s.description} (sign in ${s.wallet})`));
     for (const n of f.notes) console.log(c.dim(`       · ${n}`));
   }
 }
