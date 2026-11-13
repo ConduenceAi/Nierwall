@@ -53,14 +53,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             send: { [weak self] text in self?.ui.voiceTurn = false; self?.brain.ask(text) },
             toggleMic: { [weak self] in self?.toggleListening() },
             review: { [weak self] fixId in Task { await self?.review(fixId) } },
-            confirmWatch: { [weak self] id in Task { _ = await self?.brain.confirmWatch(id); self?.overlay.dismissSoon() } },
+            confirmWatch: { [weak self] id in Task { _ = await self?.brain.confirmWatch(id) } },
             snooze: { [weak self] id in Task { await self?.brain.snooze(id) } },
             linkTelegram: { [weak self] in Task { if let err = await self?.brain.linkTelegram() { self?.ui.notice = err } } }
         )
         panel = FloatingPanel(content: NSHostingView(rootView: PanelView(brain: brain, ui: ui, actions: actions)))
-        overlay = OverlayController(brain: brain, actions: actions, openPanel: { [weak self] in self?.showPanel() })
+        overlay = OverlayController()
         overlay.onOrbTap = { [weak self] in self?.orbTapped() }
-        overlay.onCancel = { [weak self] in self?.cancelVoice() }
         overlay.onClose = { [weak self] in self?.overlayClosed() }
         speaker.onSpeakingChanged = { [weak self] speaking in self?.overlay.setSpeaking(speaking) }
 
@@ -99,8 +98,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.isVisible ? panel.orderOut(nil) : showPanel()
     }
 
-    private func showPanel() {
-        if overlay.isVisible { cancelVoice() }
+    /// Opening the panel ends a voice turn, unless the turn itself opened it (an answer with buttons).
+    private func showPanel(keepOverlay: Bool = false) {
+        if overlay.isVisible, !keepOverlay { cancelVoice() }
         if let button = statusItem.button, let window = button.window {
             let rect = window.convertToScreen(button.convert(button.bounds, to: nil))
             let screen = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
@@ -111,12 +111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func review(_ fixId: String) async {
-        if let err = await brain.review(fixId: fixId) {
-            ui.notice = err
-            if overlay.isVisible { overlay.showMessage(err, dismissAfter: 6) }
-        } else {
-            overlay.hide()
-        }
+        if let err = await brain.review(fixId: fixId) { ui.notice = err } else { overlay.hide() }
     }
 
     // MARK: ⌘⌥: hold to talk, tap to finish or close
@@ -168,15 +163,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task {
             do {
                 try await input.start()
-                if ui.listening, speech === input { overlay.model.phase = .listening }
+                if ui.listening, speech === input {
+                    speaker.stop() // so the mic doesn't hear "getting voice ready"
+                    overlay.model.phase = .listening
+                }
             } catch is CancellationError {
                 // Stopped while the speech model was still loading; finishVoice already said so.
             } catch {
                 guard speech === input else { return }
                 ui.listening = false
                 speech = nil
-                overlay.showMessage("Couldn't start listening: \(error.localizedDescription)", dismissAfter: 6)
+                say("I couldn't start listening.")
+                ui.notice = "Couldn't start listening: \(error.localizedDescription)"
+                showPanel(keepOverlay: true)
             }
+        }
+        // The first time, macOS downloads its speech model before the mic turns on.
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            if ui.listening, speech === input, overlay.model.phase == .preparing { speaker.say("One moment, getting voice ready.") }
         }
     }
 
@@ -205,9 +210,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if speech === input { speech = nil }
             guard overlay.isVisible else { return }
             if wasPreparing {
-                overlay.showMessage("Voice is still getting ready. Try again in a moment.", dismissAfter: 3)
+                say("Voice is still getting ready. Try again in a moment.")
             } else if text.isEmpty {
-                overlay.showMessage("I didn't catch that.")
+                say("I didn't catch that.")
             } else {
                 ask(text)
             }
@@ -225,7 +230,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self, self.awaitingReply != nil else { return }
                 self.awaitingReply = nil
                 self.ui.voiceTurn = false
-                self.overlay.showMessage("No answer yet. It will show up in the Nierwall panel.", dismissAfter: 4)
+                self.say("Still working on it. The answer will show up in the Nierwall panel.")
             }
         }
     }
@@ -235,7 +240,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
               let reply = items[start...].first(where: { $0.role == .assistant }) else { return }
         awaitingReply = nil
         replyTimeout?.invalidate()
-        overlay.showAnswer(reply)
+        // Answers from the brain are spoken (see onReply). Anything to click, or not spoken, opens in the panel.
+        let spoken = reply.via != nil && ui.speakReplies
+        overlay.showAnswer(spoken: spoken)
+        if !spoken || reply.cards.contains(where: needsClick) { showPanel(keepOverlay: true) }
+    }
+
+    private func needsClick(_ card: Card) -> Bool {
+        switch card {
+        case .fix, .watchConfirm: return true
+        default: return false
+        }
+    }
+
+    /// A short spoken status from the orb, like "I didn't catch that."
+    private func say(_ text: String) {
+        overlay.showMessage()
+        speaker.say(text)
     }
 
     /// Esc, the close button, a quick ⌘⌥ tap, or a shortcut pressed mid-hold: stop without sending, and close.

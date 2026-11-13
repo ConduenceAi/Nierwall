@@ -271,8 +271,6 @@ struct AlertCardView: View {
 struct FixCardView: View {
     let card: FixCard
     let review: (String) -> Void
-    /// Title, health change and the button only (the voice overlay).
-    var compact = false
     var body: some View {
         let f = card.fix
         VStack(alignment: .leading, spacing: 6) {
@@ -286,12 +284,10 @@ struct FixCardView: View {
                     }
                 }
             }
-            if !compact {
-                ForEach(Array(f.steps.enumerated()), id: \.offset) { i, s in
-                    Text("\(i + 1). [\(s.chain)] \(s.description) · sign in \(s.wallet)").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                }
-                ForEach(f.notes, id: \.self) { n in Text("· \(n)").font(.caption2).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true) }
+            ForEach(Array(f.steps.enumerated()), id: \.offset) { i, s in
+                Text("\(i + 1). [\(s.chain)] \(s.description) · sign in \(s.wallet)").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
+            ForEach(f.notes, id: \.self) { n in Text("· \(n)").font(.caption2).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true) }
             Button("Review & sign") { review(f.id) }
                 .buttonStyle(.borderedProminent).controlSize(.small)
                 .disabled(f.notes.contains { $0.contains("hypothetical") })

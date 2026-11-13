@@ -28,17 +28,17 @@ leaves the signing to you.
 
 ### 1. You talk to it
 
-Hold **⌘⌥** in any app and a Siri-style orb appears over whatever you're doing, with a soft glow around the
-edges of the screen. Speak, let go, and Nierwall answers out loud. For example:
+Hold **⌘⌥** in any app and a Siri-style orb appears at the top of your screen, over whatever you're doing, with a
+soft glow around the edges. Speak, let go, and Nierwall answers out loud. For example:
 
 - "How's my Rhea loan?"
 - "What happens if NEAR drops 20%?"
 - "Ping me if my Rhea health goes under 1.5."
 
-The orb follows your voice, swirls while Nierwall thinks, and pulses while it talks. The answer comes with cards:
-a health gauge, alerts, and fix options with a **Review & sign** button. When you ask it to watch something, it
-reads the rule back and starts watching only after you confirm. The full chat history is one click away, on the
-shield in the menu bar.
+The orb follows your voice, swirls while Nierwall thinks, and pulses while it talks. When an answer has something
+to act on, such as a fix with a **Review & sign** button or a new watch to confirm, the Nierwall panel opens under
+the menu bar with the details. Nierwall starts a new watch only after you confirm it. The full chat history, with
+health gauges and alerts, is always one click away on the shield in the menu bar.
 
 Speech recognition runs on the Mac, and the audio never leaves it. Holding ⌘⌥ is detected without keyboard
 permissions, so Nierwall never sees what you type, and pressing another key with ⌘⌥ (a shortcut like ⌘⌥Esc)
@@ -193,7 +193,7 @@ sign with those.
 
 | Try | How | You should see |
 |-----|-----|----------------|
-| Ask a question | Hold ⌘⌥ in any app, speak, let go | The orb answers out loud, with cards |
+| Ask a question | Hold ⌘⌥ in any app, speak, let go | The orb answers out loud; anything to click opens in the panel |
 | Set a watch (needs `NEAR_AI_API_KEY`) | Hold ⌘⌥ and say "Ping me if my Rhea health goes under 1.3", then press Confirm | The watch turns active |
 | Simulate a crash | `pnpm simulate NEAR -9` (undo with `pnpm simulate off`) | An alert labeled SIMULATED on the Mac and in Telegram, with fixes |
 | Get alerts on your phone | Click "Get alerts on Telegram" in the panel, then tap Start in Telegram | "Linked" in Telegram |

@@ -4,7 +4,7 @@ import SwiftUI
 
 // MARK: - State
 
-/// What the Siri-style voice overlay is showing.
+/// What the Siri-style orb is doing.
 @MainActor
 final class OverlayModel: ObservableObject {
     enum Phase: Equatable { case preparing, listening, thinking, answer, message }
@@ -12,36 +12,23 @@ final class OverlayModel: ObservableObject {
     @Published var phase: Phase = .preparing
     /// Smoothed microphone level, 0 to 1.
     @Published var level: Double = 0
-    @Published var transcript = ""
-    @Published var reply: ChatItem?
-    @Published var message = ""
     @Published var speaking = false
     @Published var hovering = false
     /// True while ⌘⌥ is held (letting go sends). False for tap-to-talk (a pause or a click on the orb sends).
-    @Published var holdToTalk = true
+    var holdToTalk = true
+    /// What you've said so far. Not shown; it tells a pause after speech from silence.
+    var transcript = ""
 
     func reset(holdToTalk: Bool) {
         phase = .preparing
         level = 0
-        transcript = ""
-        reply = nil
-        message = ""
         speaking = false
+        transcript = ""
         self.holdToTalk = holdToTalk
     }
 
     func push(level new: Double) {
         level = level * 0.5 + new * 0.5
-    }
-
-    /// Answers with buttons stay up until you act on them or close them.
-    var needsAction: Bool {
-        (reply?.cards ?? []).contains { card in
-            switch card {
-            case .fix, .watchConfirm: return true
-            default: return false
-            }
-        }
     }
 
     var glowing: Bool { phase == .preparing || phase == .listening || phase == .thinking }
@@ -64,7 +51,7 @@ enum OrbMode { case idle, listening, thinking, speaking }
 struct SiriOrb: View {
     var mode: OrbMode
     var level: Double = 0
-    var size: CGFloat = 76
+    var size: CGFloat = 64
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     static let colors: [Color] = [
@@ -142,139 +129,39 @@ struct EdgeGlow: View {
     }
 }
 
-// MARK: - The overlay card
-
-private struct OverlaySizeKey: PreferenceKey {
-    static let defaultValue = CGSize.zero
-    static func reduce(value: inout CGSize, nextValue: () -> CGSize) { value = nextValue() }
-}
-
-/// The floating card: orb, what you said, and the answer with its cards.
+/// Just the orb, no background. Click it when you're done talking, or to ask something else.
 struct OverlayView: View {
     @ObservedObject var model: OverlayModel
-    @ObservedObject var brain: BrainClient
-    let actions: PanelActions
     var orbTap: () -> Void
-    var close: () -> Void
-    var openPanel: () -> Void
-    var onSize: (CGSize) -> Void
 
     var body: some View {
-        VStack(spacing: 12) {
-            Button(action: orbTap) { SiriOrb(mode: model.orbMode, level: model.level, size: 76) }
-                .buttonStyle(.plain)
-                .help(model.phase == .listening ? "Done talking" : "Ask something else")
-            content
-        }
-        .padding(.horizontal, 20)
-        .padding(.top, 16)
-        .padding(.bottom, 14)
-        .frame(width: 440)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).strokeBorder(.white.opacity(0.14)))
-        .overlay(alignment: .topTrailing) {
-            Button(action: close) {
-                Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(.secondary)
-                    .frame(width: 20, height: 20).background(.quaternary, in: Circle())
-            }
+        Button(action: orbTap) { SiriOrb(mode: model.orbMode, level: model.level, size: OverlayController.orbSize) }
             .buttonStyle(.plain)
-            .padding(12)
-            .help("Close")
-        }
-        .shadow(color: .black.opacity(0.3), radius: 22, y: 8)
-        .padding(28) // room for the shadow
-        .fixedSize(horizontal: false, vertical: true)
-        .background(GeometryReader { g in Color.clear.preference(key: OverlaySizeKey.self, value: g.size) })
-        .onPreferenceChange(OverlaySizeKey.self) { onSize($0) }
-        .onHover { model.hovering = $0 }
-        .animation(.spring(response: 0.32, dampingFraction: 0.86), value: model.phase)
+            .help(model.phase == .listening ? "Done talking" : "Ask something else")
+            .accessibilityLabel(label)
+            .onHover { model.hovering = $0 }
+            .padding(OverlayController.margin) // room for the orb to swell and glow
     }
 
-    @ViewBuilder private var content: some View {
+    private var label: String {
         switch model.phase {
-        case .preparing:
-            VStack(spacing: 4) {
-                Text("Getting voice ready…").font(.title3.weight(.medium))
-                Text("First time only: macOS is installing its speech model.").font(.caption).foregroundStyle(.secondary)
-            }
-            .multilineTextAlignment(.center)
-        case .listening:
-            Text(model.transcript.isEmpty ? "Listening…" : model.transcript)
-                .font(.title3.weight(.medium))
-                .foregroundStyle(model.transcript.isEmpty ? .secondary : .primary)
-                .multilineTextAlignment(.center)
-                .lineLimit(4)
-                .fixedSize(horizontal: false, vertical: true)
-            hint(model.holdToTalk ? "Let go of ⌘⌥ to send" : "Tap the orb when you're done")
-        case .thinking:
-            if !model.transcript.isEmpty { quote(model.transcript, lines: 3) }
-            hint("Thinking…")
-        case .answer:
-            if !model.transcript.isEmpty { quote(model.transcript, lines: 2) }
-            if let reply = model.reply { answer(reply) }
-            hint("Tap the orb to ask something else")
-        case .message:
-            Text(model.message)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
+        case .preparing: return "Nierwall is getting voice ready"
+        case .listening: return "Nierwall is listening"
+        case .thinking: return "Nierwall is thinking"
+        case .answer, .message: return model.speaking ? "Nierwall is talking" : "Nierwall"
         }
-    }
-
-    private func answer(_ reply: ChatItem) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(reply.text)
-                .lineLimit(9)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
-            ForEach(reply.cards.prefix(3)) { card in overlayCard(card) }
-            if reply.cards.count > 3 {
-                Button("\(reply.cards.count - 3) more in the Nierwall panel", action: openPanel).buttonStyle(.link).font(.caption)
-            }
-            if reply.via == "fallback" {
-                Text("From templates (no model)").font(.system(size: 9, design: .monospaced)).foregroundStyle(.tertiary)
-            } else if reply.via != nil, brain.status?.attestation.verified == true {
-                Text("NEAR AI · TEE verified").font(.system(size: 9, weight: .medium, design: .monospaced)).foregroundStyle(Palette.near)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    @ViewBuilder private func overlayCard(_ card: Card) -> some View {
-        switch card {
-        case .fix(let f): FixCardView(card: f, review: actions.review, compact: true)
-        default: CardView(card: card, actions: actions)
-        }
-    }
-
-    private func quote(_ text: String, lines: Int) -> some View {
-        Text("“\(text)”")
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .multilineTextAlignment(.center)
-            .lineLimit(lines)
-            .fixedSize(horizontal: false, vertical: true)
-    }
-
-    private func hint(_ text: String) -> some View {
-        Text(text).font(.caption2).foregroundStyle(.tertiary)
     }
 }
 
 // MARK: - Windows
 
-/// The overlay's window: above every app, including full-screen ones. It never takes keyboard focus on
-/// its own, so a shortcut or text you're typing keeps going to your app.
+/// The orb's window: above every app, including full-screen ones. It never takes keyboard focus, so a
+/// shortcut or text you're typing keeps going to your app.
 final class OverlayPanel: NSPanel {
-    var onCancel: (() -> Void)?
-    var onResign: (() -> Void)?
-
     init() {
-        super.init(contentRect: NSRect(x: 0, y: 0, width: 496, height: 220),
+        super.init(contentRect: NSRect(x: 0, y: 0, width: 116, height: 116),
                    styleMask: [.nonactivatingPanel, .borderless, .fullSizeContentView], backing: .buffered, defer: false)
         isFloatingPanel = true
-        becomesKeyOnlyIfNeeded = true
         level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         hidesOnDeactivate = false
@@ -283,13 +170,8 @@ final class OverlayPanel: NSPanel {
         isOpaque = false
         hasShadow = false
     }
-    override var canBecomeKey: Bool { true }
+    override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
-    override func cancelOperation(_ sender: Any?) { onCancel?() }
-    override func resignKey() {
-        super.resignKey()
-        onResign?()
-    }
 }
 
 /// Full-screen, click-through window for the edge glow.
@@ -308,45 +190,38 @@ final class GlowWindow: NSWindow {
     override var canBecomeMain: Bool { false }
 }
 
-/// Buttons in the overlay answer the first click, even though Nierwall is never the active app.
+/// The orb answers the first click, even though Nierwall is never the active app.
 final class FirstClickHostingView<Content: View>: NSHostingView<Content> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
 // MARK: - Controller
 
-/// Shows the overlay and the edge glow on the screen you're working on, and closes them when you're done.
+/// Shows the orb at the top center of the screen you're working on, with the edge glow, and fades them
+/// out once Nierwall has finished talking.
 @MainActor
 final class OverlayController {
+    static let orbSize: CGFloat = 64
+    static let margin: CGFloat = 22
+
     let model = OverlayModel()
     private let panel = OverlayPanel()
     private let glow = GlowWindow()
-    private var anchor = NSPoint.zero
-    private var size = CGSize(width: 496, height: 220)
     private var shown = false
     private var dismissTimer: Timer?
     private var clickMonitor: Any?
     private var bag = Set<AnyCancellable>()
 
-    /// Esc, the close button, or a click elsewhere while it's listening.
-    var onCancel: (() -> Void)?
-    /// The overlay closed, by you or on its own.
+    /// The orb went away, on its own or because you clicked elsewhere.
     var onClose: (() -> Void)?
     var onOrbTap: (() -> Void)?
 
     var isVisible: Bool { shown }
 
-    init(brain: BrainClient, actions: PanelActions, openPanel: @escaping () -> Void) {
-        let view = OverlayView(model: model, brain: brain, actions: actions,
-                               orbTap: { [weak self] in self?.onOrbTap?() },
-                               close: { [weak self] in self?.onCancel?() },
-                               openPanel: openPanel,
-                               onSize: { [weak self] in self?.resize($0) })
-        let host = FirstClickHostingView(rootView: view)
+    init() {
+        let host = FirstClickHostingView(rootView: OverlayView(model: model, orbTap: { [weak self] in self?.onOrbTap?() }))
         host.sizingOptions = []
         panel.contentView = host
-        panel.onCancel = { [weak self] in self?.onCancel?() }
-        panel.onResign = { [weak self] in self?.clickedAway() }
 
         let glowHost = NSHostingView(rootView: EdgeGlow(model: model))
         glowHost.sizingOptions = []
@@ -361,9 +236,10 @@ final class OverlayController {
     func show() {
         dismissTimer?.invalidate()
         guard let screen = NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) }) ?? NSScreen.main else { return }
-        anchor = NSPoint(x: screen.visibleFrame.midX, y: screen.visibleFrame.minY + 8)
+        // Top center, just under the menu bar (and the notch).
+        let side = (Self.orbSize * 1.12 + Self.margin * 2).rounded()
+        panel.setFrame(NSRect(x: (screen.frame.midX - side / 2).rounded(), y: (screen.visibleFrame.maxY - side + 8).rounded(), width: side, height: side), display: true)
         glow.setFrame(screen.frame, display: false)
-        place()
         if !shown {
             shown = true
             panel.alphaValue = 0
@@ -372,7 +248,7 @@ final class OverlayController {
                 ctx.duration = 0.18
                 panel.animator().alphaValue = 1
             }
-            // Clicks in other apps close a finished answer. Mouse events need no permission.
+            // A click in another app dismisses a finished answer. Mouse events need no permission.
             clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
                 Task { @MainActor in self?.clickedAway() }
             }
@@ -388,7 +264,7 @@ final class OverlayController {
         clickMonitor = nil
         setGlow(false)
         NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.2
+            ctx.duration = 0.25
             panel.animator().alphaValue = 0
         }, completionHandler: { [weak self] in
             Task { @MainActor in
@@ -399,32 +275,23 @@ final class OverlayController {
         onClose?()
     }
 
-    func showAnswer(_ item: ChatItem) {
-        model.reply = item
+    /// The answer is in. The orb pulses while it's spoken, then fades.
+    func showAnswer(spoken: Bool) {
         model.phase = .answer
         if !shown { show() }
-        if model.needsAction {
-            dismissTimer?.invalidate()
-        } else {
-            scheduleDismiss(after: min(16, max(5, Double(item.text.count) / 16)))
-        }
+        scheduleDismiss(after: spoken ? 8 : 1.5)
     }
 
-    func showMessage(_ text: String, dismissAfter seconds: TimeInterval = 2.5) {
-        model.message = text
+    /// A short spoken status, like "I didn't catch that."
+    func showMessage() {
         model.phase = .message
         if !shown { show() }
-        scheduleDismiss(after: seconds)
+        scheduleDismiss(after: 8)
     }
 
     func setSpeaking(_ speaking: Bool) {
         model.speaking = speaking
-        if !speaking, shown, model.phase == .answer, !model.needsAction { scheduleDismiss(after: 4) }
-    }
-
-    /// After you confirm or act on something in the overlay.
-    func dismissSoon() {
-        if shown { scheduleDismiss(after: 2.5) }
+        if !speaking, shown, model.phase == .answer || model.phase == .message { scheduleDismiss(after: 1) }
     }
 
     private func clickedAway() {
@@ -464,65 +331,47 @@ final class OverlayController {
             })
         }
     }
-
-    private func resize(_ s: CGSize) {
-        guard s.width > 1, s.height > 1, s != size else { return }
-        size = s
-        DispatchQueue.main.async { [weak self] in self?.place() }
-    }
-
-    /// Bottom center of the screen, growing upward as the answer comes in.
-    private func place() {
-        panel.setFrame(NSRect(x: (anchor.x - size.width / 2).rounded(), y: anchor.y.rounded(), width: size.width, height: size.height), display: true)
-    }
 }
 
 // MARK: - Design check
 
-/// Offscreen renders of the overlay for checking the design: `Nierwall --render-previews <folder>`.
+/// Offscreen renders of the orb on a mock screen, for checking the design: `Nierwall --render-previews <folder>`.
 /// Nothing is shown on screen.
 @MainActor
 enum OverlayPreviews {
     static func render(to dir: URL) {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let brain = BrainClient()
-        let actions = PanelActions(send: { _ in }, toggleMic: {}, review: { _ in }, confirmWatch: { _ in }, snooze: { _ in }, linkTelegram: {})
-        let cards = (try? JSONDecoder().decode([Card].self, from: Data(sampleCards.utf8))) ?? []
-        let desktop = LinearGradient(colors: [Color(red: 0.16, green: 0.2, blue: 0.3), Color(red: 0.36, green: 0.24, blue: 0.4)], startPoint: .topLeading, endPoint: .bottomTrailing)
-
-        func overlay(_ name: String, _ setup: (OverlayModel) -> Void) {
+        let states: [(String, (OverlayModel) -> Void)] = [
+            ("1-listening", { m in m.reset(holdToTalk: true); m.phase = .listening; m.level = 0.75 }),
+            ("2-thinking", { m in m.reset(holdToTalk: true); m.phase = .thinking }),
+            ("3-speaking", { m in m.reset(holdToTalk: true); m.phase = .answer; m.speaking = true }),
+        ]
+        for (name, setup) in states {
             let model = OverlayModel()
             setup(model)
-            let view = OverlayView(model: model, brain: brain, actions: actions, orbTap: {}, close: {}, openPanel: {}, onSize: { _ in })
-            save(view.background(desktop), name, dir)
+            save(mockScreen(model), name, dir)
         }
-        overlay("1-listening") { m in
-            m.reset(holdToTalk: true); m.phase = .listening; m.level = 0.75; m.transcript = "How's my Rhea loan doing"
-        }
-        overlay("2-thinking") { m in
-            m.reset(holdToTalk: true); m.phase = .thinking; m.transcript = "How's my Rhea loan doing?"
-        }
-        overlay("3-answer") { m in
-            m.reset(holdToTalk: true)
-            m.transcript = "How's my Rhea loan doing?"
-            m.reply = ChatItem(role: .assistant, text: "Your Rhea loan is healthy: health factor 1.37, and NEAR would have to fall 27% before liquidation. Your floor is 1.30.", cards: cards, via: "fallback")
-            m.phase = .answer
-        }
-        overlay("4-message") { m in
-            m.reset(holdToTalk: true); m.message = "I didn't catch that."; m.phase = .message
-        }
-
-        let glowModel = OverlayModel()
-        glowModel.phase = .listening
-        glowModel.level = 0.6
-        save(EdgeGlow(model: glowModel).frame(width: 960, height: 600).background(desktop), "5-edge-glow", dir)
         save(HStack(spacing: 28) {
             SiriOrb(mode: .idle)
             SiriOrb(mode: .listening, level: 0.85)
             SiriOrb(mode: .thinking)
             SiriOrb(mode: .speaking)
             SiriOrb(mode: .listening, level: 0.5, size: 22)
-        }.padding(30).background(desktop), "6-orbs", dir)
+        }.padding(30).background(desktop), "4-orbs", dir)
+    }
+
+    private static let desktop = LinearGradient(colors: [Color(red: 0.16, green: 0.2, blue: 0.3), Color(red: 0.36, green: 0.24, blue: 0.4)], startPoint: .topLeading, endPoint: .bottomTrailing)
+
+    /// A 1280×800 screen: menu bar, an app window, the edge glow, and the orb where the real one goes.
+    private static func mockScreen(_ model: OverlayModel) -> some View {
+        ZStack(alignment: .top) {
+            desktop
+            RoundedRectangle(cornerRadius: 12).fill(Color(white: 0.95)).frame(width: 820, height: 500).shadow(radius: 24).padding(.top, 150)
+            Rectangle().fill(.black.opacity(0.35)).frame(height: 28)
+            if model.glowing { EdgeGlow(model: model) }
+            OverlayView(model: model, orbTap: {}).padding(.top, 28 - 8)
+        }
+        .frame(width: 1280, height: 800)
     }
 
     private static func save<V: View>(_ view: V, _ name: String, _ dir: URL) {
@@ -536,10 +385,4 @@ enum OverlayPreviews {
         try? png.write(to: dir.appendingPathComponent("\(name).png"))
         print("wrote \(name).png")
     }
-
-    private static let sampleCards = """
-    [{"type":"position","positionId":"rhea:NEAR wallet","title":"Rhea · NEAR","wallet":"NEAR wallet","health":1.37,"floor":1.3,"liquidationDistance":0.271,"collateralUsd":16479,"debtUsd":8564,"observedAt":"2026-11-13T09:00:00Z","simulated":false},
-     {"type":"fix","alertId":"a1","fix":{"id":"f1","kind":"repay","title":"Move 1,359 USDC from Cash (Base) to NEAR, then repay on Rhea","steps":[{"chain":"base","wallet":"Cash","description":"Send 1,359 USDC to a NEAR Intents deposit address"},{"chain":"near","wallet":"NEAR wallet","description":"Repay the USDC that arrives on Rhea"}],"healthBefore":1.25,"healthAfter":1.48,"notes":["NEAR Intents: about 1,358.84 USDC arrives in ~35s"],"rank":1}},
-     {"type":"watch_confirm","watchId":"w1","label":"Rhea · NEAR: health factor below 1.30"}]
-    """
 }
