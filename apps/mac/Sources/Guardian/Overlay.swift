@@ -14,17 +14,11 @@ final class OverlayModel: ObservableObject {
     @Published var level: Double = 0
     @Published var speaking = false
     @Published var hovering = false
-    /// True while ⌘⌥ is held (letting go sends). False for tap-to-talk (a pause or a click on the orb sends).
-    var holdToTalk = true
-    /// What you've said so far. Not shown; it tells a pause after speech from silence.
-    var transcript = ""
 
-    func reset(holdToTalk: Bool) {
+    func reset() {
         phase = .preparing
         level = 0
         speaking = false
-        transcript = ""
-        self.holdToTalk = holdToTalk
     }
 
     func push(level new: Double) {
@@ -130,7 +124,7 @@ struct EdgeGlow: View {
     }
 }
 
-/// Just the orb, no background. Click it when you're done talking, or to ask something else.
+/// Just the orb, no background. A click works like ⌘⌥: send now, or stop it talking.
 struct OverlayView: View {
     @ObservedObject var model: OverlayModel
     var orbTap: () -> Void
@@ -138,7 +132,7 @@ struct OverlayView: View {
     var body: some View {
         Button(action: orbTap) { SiriOrb(mode: model.orbMode, level: model.level, size: OverlayController.orbSize) }
             .buttonStyle(.plain)
-            .help(model.phase == .listening ? "Done talking" : "Ask something else")
+            .help(model.phase == .listening ? "Send now (or just pause)" : model.speaking ? "Stop talking" : "")
             .accessibilityLabel(label)
             .onHover { model.hovering = $0 }
             .padding(OverlayController.margin) // room for the orb to swell and glow
@@ -198,8 +192,8 @@ final class FirstClickHostingView<Content: View>: NSHostingView<Content> {
 
 // MARK: - Controller
 
-/// Shows the orb at the top center of the screen you're working on, with the edge glow, and fades them
-/// out once Nierwall has finished talking.
+/// Shows the orb at the top center of the screen you're working on, with the edge glow. The conversation
+/// decides when it goes; a last spoken message fades it out on its own.
 @MainActor
 final class OverlayController {
     static let orbSize: CGFloat = 64
@@ -208,14 +202,17 @@ final class OverlayController {
     let model = OverlayModel()
     private let panel = OverlayPanel()
     private let glow = GlowWindow()
+    private let escape = EscapeKey()
     private var shown = false
     private var dismissTimer: Timer?
     private var clickMonitor: Any?
     private var bag = Set<AnyCancellable>()
 
-    /// The orb went away, on its own or because you clicked elsewhere.
+    /// The orb went away.
     var onClose: (() -> Void)?
     var onOrbTap: (() -> Void)?
+    /// Esc, while the orb is open.
+    var onEscape: (() -> Void)?
 
     var isVisible: Bool { shown }
 
@@ -223,6 +220,7 @@ final class OverlayController {
         let host = FirstClickHostingView(rootView: OverlayView(model: model, orbTap: { [weak self] in self?.onOrbTap?() }))
         host.sizingOptions = []
         panel.contentView = host
+        escape.onPress = { [weak self] in self?.onEscape?() }
 
         let glowHost = NSHostingView(rootView: EdgeGlow(model: model))
         glowHost.sizingOptions = []
@@ -243,13 +241,14 @@ final class OverlayController {
         glow.setFrame(screen.frame, display: false)
         if !shown {
             shown = true
+            escape.isEnabled = true
             panel.alphaValue = 0
             panel.orderFrontRegardless()
             NSAnimationContext.runAnimationGroup { ctx in
                 ctx.duration = 0.18
                 panel.animator().alphaValue = 1
             }
-            // A click in another app dismisses a finished answer. Mouse events need no permission.
+            // A click in another app dismisses a last message. Mouse events need no permission.
             clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
                 Task { @MainActor in self?.clickedAway() }
             }
@@ -260,6 +259,7 @@ final class OverlayController {
     func hide() {
         guard shown else { return }
         shown = false
+        escape.isEnabled = false
         dismissTimer?.invalidate()
         if let clickMonitor { NSEvent.removeMonitor(clickMonitor) }
         clickMonitor = nil
@@ -276,27 +276,21 @@ final class OverlayController {
         onClose?()
     }
 
-    /// The answer is in. The orb pulses while it's spoken, then fades.
-    func showAnswer(spoken: Bool) {
-        model.phase = .answer
-        if !shown { show() }
-        scheduleDismiss(after: spoken ? 8 : 1.5)
-    }
-
-    /// A short spoken status, like "I didn't catch that."
+    /// A last spoken message, like "I couldn't start listening." The orb pulses while it's said, then fades.
     func showMessage() {
         model.phase = .message
         if !shown { show() }
         scheduleDismiss(after: 8)
     }
 
+    /// For the last message's voice.
     func setSpeaking(_ speaking: Bool) {
         model.speaking = speaking
-        if !speaking, shown, model.phase == .answer || model.phase == .message { scheduleDismiss(after: 1) }
+        if !speaking, shown, model.phase == .message { scheduleDismiss(after: 1) }
     }
 
     private func clickedAway() {
-        guard shown, model.phase == .answer || model.phase == .message else { return }
+        guard shown, model.phase == .message else { return }
         hide()
     }
 
@@ -304,7 +298,7 @@ final class OverlayController {
         dismissTimer?.invalidate()
         dismissTimer = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { [weak self] _ in
             Task { @MainActor in
-                guard let self, self.shown else { return }
+                guard let self, self.shown, self.model.phase == .message else { return }
                 if self.model.hovering || self.model.speaking { self.scheduleDismiss(after: 2) } else { self.hide() }
             }
         }
@@ -343,9 +337,9 @@ enum OverlayPreviews {
     static func render(to dir: URL) {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let states: [(String, (OverlayModel) -> Void)] = [
-            ("1-listening", { m in m.reset(holdToTalk: true); m.phase = .listening; m.level = 0.75 }),
-            ("2-thinking", { m in m.reset(holdToTalk: true); m.phase = .thinking }),
-            ("3-speaking", { m in m.reset(holdToTalk: true); m.phase = .answer; m.speaking = true }),
+            ("1-listening", { m in m.reset(); m.phase = .listening; m.level = 0.75 }),
+            ("2-thinking", { m in m.reset(); m.phase = .thinking }),
+            ("3-speaking", { m in m.reset(); m.phase = .answer; m.speaking = true }),
         ]
         for (name, setup) in states {
             let model = OverlayModel()

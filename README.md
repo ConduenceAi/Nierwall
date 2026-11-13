@@ -28,8 +28,10 @@ leaves the signing to you.
 
 ### 1. You talk to it
 
-Hold **⌘⌥** in any app and a Siri-style orb appears at the top of your screen, over whatever you're doing, with a
-soft glow around the edges. Speak, let go, and Nierwall answers out loud. For example:
+Press **⌘⌥** in any app and a Siri-style orb appears at the top of your screen, over whatever you're doing, with a
+soft glow around the edges. Just talk. When you pause, Nierwall answers out loud and then listens again, so you can
+keep going like a conversation. Talk over it to cut in. Press **Esc** when you're done, or simply stop talking and
+it goes away after a few quiet seconds. For example:
 
 - "How's my Rhea loan?"
 - "What happens if NEAR drops 20%?"
@@ -37,12 +39,13 @@ soft glow around the edges. Speak, let go, and Nierwall answers out loud. For ex
 
 The orb follows your voice, swirls while Nierwall thinks, and pulses while it talks. When an answer has something
 to act on, such as a fix with a **Review & sign** button or a new watch to confirm, the Nierwall panel opens under
-the menu bar with the details. Nierwall starts a new watch only after you confirm it. The full chat history, with
+the menu bar with the details while you keep talking. Nierwall starts a new watch only after you confirm it. The full chat history, with
 health gauges and alerts, is always one click away on the shield in the menu bar.
 
-Speech recognition runs on the Mac, and the audio never leaves it. Holding ⌘⌥ is detected without keyboard
-permissions, so Nierwall never sees what you type, and pressing another key with ⌘⌥ (a shortcut like ⌘⌥Esc)
-doesn't trigger it.
+Speech recognition runs on the Mac, and the audio never leaves it. The orb's voice goes through Apple's echo
+cancellation, so the mic hears you and not the orb. ⌘⌥ is detected without keyboard permissions, so Nierwall
+never sees what you type, and pressing another key with ⌘⌥ (a shortcut like ⌘⌥Esc) doesn't trigger it. Esc
+belongs to the orb only while it's open.
 
 ### 2. It keeps watch and brings you a fix
 
@@ -232,8 +235,8 @@ sign with those.
 
 | Try | How | You should see |
 |-----|-----|----------------|
-| Ask a question | Hold ⌘⌥ in any app, speak, let go | The orb answers out loud; anything to click opens in the panel |
-| Set a watch (needs `NEAR_AI_API_KEY`) | Hold ⌘⌥ and say "Ping me if my Rhea health goes under 1.3", then press Confirm | The watch turns active |
+| Ask a question | Press ⌘⌥ in any app and speak; pause when you're done | The orb answers out loud and listens for a follow-up; Esc ends it; anything to click opens in the panel |
+| Set a watch (needs `NEAR_AI_API_KEY`) | Press ⌘⌥ and say "Ping me if my Rhea health goes under 1.3", then press Confirm | The watch turns active |
 | Let the AI pick your limits | "How safe is my Rhea loan?" | A proposed floor and repair target with the reason, to confirm |
 | Watch any token | "Tell me if SOL drops below $70" | A watch on SOL's CoinGecko price, to confirm |
 | Set a target mix | "Keep at least 20% in stablecoins" | A mix watch, to confirm; the Snap and plans now respect it |

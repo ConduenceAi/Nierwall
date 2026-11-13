@@ -12,7 +12,7 @@ Last updated: 2026-11-13 (afternoon, IST). Deadline: 2026-11-14 23:59 UTC. Judgi
 | 6 | NEAR AI agent | Built, untested live | Attested, end-to-end encrypted, 7 tools, number check, seed-phrase tripwire, template fallback. Needs `NEAR_AI_API_KEY` |
 | 7 | Fixes, NEAR Intents quotes, review and signing page | Done, signing untested | Live 1Click quotes with 5 checks; signing needs your wallets (test with a tiny amount); blocked on demo accounts |
 | 8 | MetaMask Snap (pre-sign checks) | Built, untested in MetaMask | Analysis tested with real calldata; needs MetaMask Flask in your browser |
-| 9 | Mac menu-bar app (Swift) | Built, launched | Hold ⌘⌥ for the Siri-style orb (top center, no background, edge glow, spoken answers; buttons open in the panel). Rendered and checked offscreen; voice, overlay and notifications still need you at the screen |
+| 9 | Mac menu-bar app (Swift) | Built, launched | Press ⌘⌥ for the Siri-style orb (top center, no background, edge glow): a hands-free conversation where a pause sends, it answers and listens again, you can talk over it, and Esc or silence ends it. Turn-taking checked offline (`apps/mac/scripts/check.sh`); voice, echo cancellation, overlay and notifications still need you at the screen |
 | 10 | Always-on (launchd) + docs | Done | `pnpm always-on` installs it (you run it) |
 | 11 | Holdings, token watches, portfolio mix | Done, live-tested | Every token in every wallet (Base batched read, NEAR via FastNEAR); price watches for any CoinGecko coin; mix targets as watches |
 | 12 | Advisor (AI plans, Mac checks) | Checker live-tested, AI untested | Plans replayed against balances, loans and live quotes; review sessions built for swaps, moves, Aave and Rhea. AI sets floors, targets, alert severity and cost limits. Needs `NEAR_AI_API_KEY` to try the AI part |
@@ -31,6 +31,12 @@ Last updated: 2026-11-13 (afternoon, IST). Deadline: 2026-11-14 23:59 UTC. Judgi
 
 ## Log
 
+- **2026-11-13 (night)** Voice is now a conversation: press ⌘⌥ (no holding), talk, pause, and the orb answers and
+  listens again until you press Esc or stay quiet for 8 seconds. You can talk over it: its voice plays through the
+  same audio engine as the mic with Apple's echo cancellation, its own words are filtered out of what it hears, and
+  it turns itself down as soon as you start talking. A pause is read from the mic level (Apple's transcriber only
+  updates about once a second), waiting longer when your last word says more is coming ("and", "um"). Esc is
+  registered only while the orb is open, with no permission needed. 15 offline checks with scripted audio.
 - **2026-11-13 (evening)** The Snap now checks every transaction MetaMask sends, on any network: simulation where
   the network's node supports it (13 EVM networks), decoding elsewhere, tokens priced from the NEAR Intents list,
   then CoinGecko. NEAR transactions from MetaMask are decoded per NEP-518. 45 tests pass.

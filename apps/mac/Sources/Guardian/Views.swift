@@ -131,11 +131,11 @@ struct PanelView: View {
                     .foregroundStyle(ui.listening ? Palette.crit : Color.accentColor)
             }
             .buttonStyle(.plain)
-            .help(ui.listening ? "Stop and send" : "Talk (or hold ⌘⌥ anywhere)")
+            .help(ui.listening ? "End the conversation" : "Talk (or press ⌘⌥ anywhere)")
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
         .overlay(alignment: .bottomTrailing) {
-            Text("Hold ⌘⌥ to talk").font(.system(size: 9)).foregroundStyle(.tertiary).padding(.trailing, 14).padding(.bottom, 2)
+            Text("⌘⌥ to talk · Esc to stop").font(.system(size: 9)).foregroundStyle(.tertiary).padding(.trailing, 14).padding(.bottom, 2)
         }
     }
 
