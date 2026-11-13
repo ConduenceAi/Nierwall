@@ -50,12 +50,20 @@ A background service (the "brain") checks your loans on **Rhea** (NEAR) and **Aa
 every 20 seconds when you're close to a limit. It can watch:
 
 - loan health, and how far prices can fall before liquidation
-- price levels and moves ("tell me if ETH drops 10%")
+- the price of any token on CoinGecko ("tell me if SOL drops below $70")
+- your portfolio mix ("keep at least 20% in stablecoins")
 - a minimum balance you want to keep in a wallet
 - its own data sources, so it tells you when it can't see instead of going quiet
 
-When a limit is crossed you get a Mac notification and a Telegram message with fix options. If you don't react
-it reminds you, if things get worse it escalates, and when the loan recovers it tells you and closes the issue.
+You don't have to pick the numbers yourself. Ask how safe a loan is and the AI looks at how much its collateral
+has moved over the last 90 days, then proposes a floor and a repair target with a one-line reason. Nothing
+starts until you confirm.
+
+When a limit is crossed you get a Mac notification and a Telegram message with fix options. The AI judges how
+urgent it is from the market (a loan 12% from liquidation is more urgent when its collateral swings 7% a day), and
+says why. Two rules stay fixed in code: health under 1.1, or less than 5% from liquidation, is always critical, and
+if the AI is unavailable alerts still go out on fixed rules. If you don't react it reminds you, if things get worse
+it escalates, and when the loan recovers it tells you and closes the issue.
 
 Here is an alert from `pnpm demo` (shortened), on a public account during a simulated 9% NEAR drop:
 
@@ -69,17 +77,37 @@ it: the money goes to your own account, the route and amount match, the minimum 
 and there's enough time to send. A review page then hands each step to your own wallet: MetaMask for Base, your
 NEAR wallet for NEAR. Nierwall follows the transfer and the repayment until both are confirmed.
 
-### 3. It checks transactions before you sign
+### 3. It advises, and checks every plan
 
-The **Nierwall Snap** adds a panel to MetaMask's confirmation screen for transactions on Base:
+Ask "how do I make my loans safer?" or "rebalance me toward 30% stablecoins". The AI looks at every token in every
+wallet and your loans, then proposes up to two plans: swaps, moves between your own wallets (across chains too),
+repaying or adding collateral on Aave or Rhea. It also decides how much each plan is worth paying in fees.
 
+The AI never does the math. Your Mac replays each step against your real balances, your loans and live NEAR
+Intents quotes, and rejects anything that doesn't add up: spending more than you hold, a loan pushed near
+liquidation, a reserve you set, a cost above what the plan is worth. A plan can only move money between your own
+wallets, Aave, Rhea and NEAR Intents; there's no way to name an outside address. What passes shows up as a card:
+loan health before and after, your mix before and after, the cost, and **Review & sign**.
+
+### 4. It checks transactions before you sign
+
+The **Nierwall Snap** adds a panel to MetaMask's confirmation screen for transactions on Base. Before you sign,
+your Mac runs the exact transaction on the latest block without sending it, so it works for any app or swap:
+
+- **What you send and get:** "You send 1,500 USDC ($1,500) · You get 0.74 ETH ($1,480)".
+- **Your mix:** if a swap breaks a target you set, it says so and suggests what else you could use. For example:
+  "Stablecoins would go from 30% to 15% of your portfolio. You set a minimum of 20%. If you want ETH, you could
+  swap NEAR (about $5,000 in Savings) instead and keep stablecoins at 30%."
+- **Bad deals:** a swap that returns much less value than it takes, a call that takes tokens and gives nothing
+  back, or a transaction that would fail and waste the fee.
+- **Hidden permissions:** an unlimited approval or "approve all" to an unfamiliar contract tucked inside a bigger
+  transaction, the usual wallet-drainer trick.
 - **Aave actions:** your health factor before and after. "Withdraw all cbBTC" on a real position shows
   1.62 → 0.14 and is marked critical.
-- **Approvals:** warns about unlimited approvals and unknown spenders.
 - **Transfers:** checks that a deposit matches the Nierwall quote you're paying, and warns when you send to an
   address that isn't yours or go below a balance you said to keep.
 
-It never blocks a transaction. If it can't decode one, it says "not checked", never "looks fine".
+It never blocks a transaction. If it can't check one, it says "not checked", never "looks fine".
 
 ## How it works
 
@@ -119,9 +147,9 @@ flowchart LR
 
 | | How Nierwall uses it |
 |---|---|
-| **NEAR AI Cloud** | Runs the assistant's model (`z-ai/glm-5.3-flash`) inside a TEE. Nierwall verifies the attestation before sending anything, encrypts chats end to end, and verifies each reply's signature. The app shows "NEAR AI · TEE verified". |
+| **NEAR AI Cloud** | Runs the assistant inside TEEs: `z-ai/glm-5.3-flash` for everyday chat and alert judgment, the larger `z-ai/glm-5.3` for planning. Nierwall verifies both attestations before sending anything, encrypts chats end to end, and verifies each reply's signature. The app shows "NEAR AI · TEE verified". |
 | **Rhea** | NEAR's lending protocol. Nierwall reads your Rhea loans and previews every fix with Rhea's own risk weights. |
-| **NEAR Intents** | Moves USDC from Base to NEAR to repay a Rhea loan, through the 1Click API, with Nierwall's own checks on every quote. |
+| **NEAR Intents** | Every swap and cross-chain move in a fix or plan (e.g. ETH → USDC on Base, NEAR → USDC, USDC from Base to NEAR), through the 1Click API, with Nierwall's own checks on every quote. Its token list also prices your holdings. |
 | **NEAR Connect** | Opens your NEAR wallet to sign the NEAR side of a fix. |
 
 ## Privacy and safety
@@ -131,7 +159,9 @@ flowchart LR
 - **Private AI.** The model runs in secure hardware on NEAR AI Cloud, and Nierwall checks that before the first
   prompt.
 - **Numbers are double-checked.** Every number in an AI answer must match the data Nierwall computed. If one
-  doesn't, you get the plain computed answer instead.
+  doesn't, you get the plain computed answer instead. Plans are replayed on your Mac before you see them.
+- **The AI judges, code enforces.** The AI proposes limits, judges urgency and designs plans. Health math, the
+  1.05 hard stop for plans, the always-critical rails and the own-wallets-only rule live in code it can't change.
 - **Memory can't grant powers.** It stores only your own messages and Nierwall's own events, never text from
   websites or token names. It can shape answers and suggestions, but a new watch always needs your confirmation.
 - **Simulations are labeled.** Simulated price drops say SIMULATED everywhere and are never stored in memory.
@@ -145,8 +175,9 @@ flowchart LR
 | NEAR AI Cloud (TEE) | Your messages and the position data looked up to answer them, with wallet nicknames instead of addresses |
 | OpenAI | Text used to build memory, with nicknames, never addresses |
 | Telegram | Alert text, at the detail level you choose (`TELEGRAM_DETAIL`) |
-| NEAR and Base RPCs | Reads of your positions and balances |
-| NEAR Intents | A quote for a cross-chain fix you open. The transfer itself links your Base and NEAR addresses on-chain. |
+| NEAR and Base RPCs, FastNEAR | Reads of your positions and balances; the Base RPC also simulates transactions the Snap checks |
+| CoinGecko | Coin ids for prices and price history, never addresses |
+| NEAR Intents | Price checks use stand-in addresses. Your real addresses go only when you open a fix or plan to sign; a cross-chain transfer links those wallets on-chain, and Nierwall warns you first. |
 
 ## Try it
 
@@ -195,12 +226,16 @@ sign with those.
 |-----|-----|----------------|
 | Ask a question | Hold ⌘⌥ in any app, speak, let go | The orb answers out loud; anything to click opens in the panel |
 | Set a watch (needs `NEAR_AI_API_KEY`) | Hold ⌘⌥ and say "Ping me if my Rhea health goes under 1.3", then press Confirm | The watch turns active |
+| Let the AI pick your limits | "How safe is my Rhea loan?" | A proposed floor and repair target with the reason, to confirm |
+| Watch any token | "Tell me if SOL drops below $70" | A watch on SOL's CoinGecko price, to confirm |
+| Set a target mix | "Keep at least 20% in stablecoins" | A mix watch, to confirm; the Snap and plans now respect it |
+| Ask for a plan | "Rebalance me toward 30% stablecoins" | Plan cards with health and mix before/after, cost, and **Review & sign** |
 | Simulate a crash | `pnpm simulate NEAR -9` (undo with `pnpm simulate off`) | An alert labeled SIMULATED on the Mac and in Telegram, with fixes |
 | Get alerts on your phone | Click "Get alerts on Telegram" in the panel, then tap Start in Telegram | "Linked" in Telegram |
 | Check a transaction | `pnpm snap`, then open `http://127.0.0.1:7420/snap/install` in a browser with MetaMask Flask | Nierwall's panel in MetaMask's confirmation screen |
 | Keep it running | `pnpm always-on` (undo with `sh ops/uninstall-always-on.sh`) | Brain, memory and app start at login and restart if they crash |
 
-Tests: `pnpm test` runs 21 tests, 4 of them against mainnet. `OFFLINE=1 pnpm test` skips the mainnet ones.
+Tests: `pnpm test` runs 40 tests, 4 of them against mainnet. `OFFLINE=1 pnpm test` skips the mainnet ones.
 
 ## Status
 
@@ -209,12 +244,15 @@ Working on live mainnet data:
 - loan and price readers (Rhea matches Rhea's own SDK exactly, Aave within 2%)
 - watches and alerts
 - fix planning with live NEAR Intents quotes
-- the Snap's transaction analysis
+- every token in every wallet, valued, and the portfolio mix
+- the plan checker, with live quotes (`pnpm demo` runs one)
+- review sessions for plans: real quotes and transactions built, not signed
+- the Snap's transaction analysis, including simulating real swaps on Base
 - the menu-bar app builds and connects to the brain
 
 Built but not yet tested end to end:
 
-- AI conversation on NEAR AI Cloud, memory, and Telegram. They need API keys.
+- AI conversation, plan proposals and alert judgment on NEAR AI Cloud, memory, and Telegram. They need API keys.
 - voice and notifications in the menu-bar app
 - the Snap inside MetaMask Flask
 - real on-chain signing. Try it with a tiny amount first.
@@ -225,8 +263,9 @@ The full tracker is in [docs/PROGRESS.md](docs/PROGRESS.md). The original design
 ### Known limits
 
 - Checks pause while your Mac sleeps or is offline, because the brain runs on your Mac.
-- Aave positions on Base are watched and checked by the Snap, but fixes are Rhea-only for now.
-- "Add NEAR collateral" opens the Rhea app instead of building the transaction.
+- Automatic fixes on alerts are Rhea-only; for Aave, ask the advisor for a plan (repay, supply and withdraw are built).
+- Adding or withdrawing Rhea collateral opens the Rhea app instead of building the transaction.
+- Holdings and the portfolio mix cover tokens on Base and NEAR that NEAR Intents lists; other chains aren't counted.
 - The Snap can't decode NEAR transactions sent through MetaMask yet. It says "not checked" for them.
 - Installing a local Snap, and MetaMask's full-screen critical warning, need MetaMask Flask.
 

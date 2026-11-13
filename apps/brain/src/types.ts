@@ -54,6 +54,8 @@ export interface Snapshot {
   balances: WalletBalance[];
   /** Prices of CoinGecko coins that watches follow, keyed by coin id. */
   coins?: Record<string, { usd: number; change24h: number | null }>;
+  /** Present when an allocation watch is active. */
+  allocation?: Allocation;
   /** Sources that failed during this refresh; their data is missing or stale. */
   errors: string[];
   scenario: ScenarioState | null;
@@ -67,7 +69,13 @@ export interface ScenarioState {
   note: string;
 }
 
-export type WatchKind = "health_below" | "price_below" | "price_above" | "price_move" | "liq_distance" | "balance_min" | "data_stale";
+export type WatchKind = "health_below" | "price_below" | "price_above" | "price_move" | "liq_distance" | "balance_min" | "allocation_min" | "allocation_max" | "data_stale";
+
+/** Portfolio value by asset class across wallets and loans (debt netted), as shares of net worth. */
+export interface Allocation {
+  netWorthUsd: number;
+  classes: Array<{ cls: "stable" | "ETH" | "BTC" | "NEAR" | "other"; usd: number; pct: number }>;
+}
 
 export interface Watch {
   id: string;

@@ -14,6 +14,9 @@ Last updated: 2026-11-13 (afternoon, IST). Deadline: 2026-11-14 23:59 UTC. Judgi
 | 8 | MetaMask Snap (pre-sign checks) | Built, untested in MetaMask | Analysis tested with real calldata; needs MetaMask Flask in your browser |
 | 9 | Mac menu-bar app (Swift) | Built, launched | Hold ⌘⌥ for the Siri-style orb (top center, no background, edge glow, spoken answers; buttons open in the panel). Rendered and checked offscreen; voice, overlay and notifications still need you at the screen |
 | 10 | Always-on (launchd) + docs | Done | `pnpm always-on` installs it (you run it) |
+| 11 | Holdings, token watches, portfolio mix | Done, live-tested | Every token in every wallet (Base batched read, NEAR via FastNEAR); price watches for any CoinGecko coin; mix targets as watches |
+| 12 | Advisor (AI plans, Mac checks) | Checker live-tested, AI untested | Plans replayed against balances, loans and live quotes; review sessions built for swaps, moves, Aave and Rhea. AI sets floors, targets, alert severity and cost limits. Needs `NEAR_AI_API_KEY` to try the AI part |
+| 13 | Snap: transaction simulation | Done, live-tested on Base | "You send / you get", mix targets with alternatives, bad rates, hidden approvals, failing transactions |
 
 ## Before submitting
 
@@ -27,6 +30,12 @@ Last updated: 2026-11-13 (afternoon, IST). Deadline: 2026-11-14 23:59 UTC. Judgi
 
 ## Log
 
+- **2026-11-13 (afternoon)** Advisor: the TEE planning model proposes plans and the Mac checks every step with
+  live NEAR Intents quotes before you see them. The AI now proposes loan floors and repair targets from 90-day
+  volatility, judges alert severity (with hard rails), and sets each plan's cost limit. Answers stay on NEAR AI's
+  TEE models. Token watches for any CoinGecko coin; portfolio-mix targets. The Snap now simulates any Base
+  transaction: what you send and get, mix targets with alternatives, bad rates, hidden approvals, failing
+  transactions. Switched the NEAR RPC to FastNEAR after rpc.mainnet.near.org started refusing requests.
 - **2026-11-13** Siri-style voice overlay: hold ⌘⌥ in any app and an orb appears over everything, with a glow
   around the screen. The orb reacts to your voice, swirls while thinking and pulses while speaking; answers come
   with their cards and fade away unless there's a button to press. ⌘⌥ is detected without keyboard

@@ -4,7 +4,7 @@ import type { Chain, Wallet, WalletsConfig } from "../config.js";
 import type { Holding } from "../holdings.js";
 import type { AaveAccountDetail } from "../protocols/aave.js";
 import { findToken, type TokenInfo } from "../tokens.js";
-import type { LendingPosition, Watch } from "../types.js";
+import type { Allocation, LendingPosition, Watch } from "../types.js";
 
 /*
  * The advisor's safety net. The AI (in a TEE) proposes plans as plain steps; this file replays them on the
@@ -390,6 +390,20 @@ export async function checkPlan(input: PlanInput, ctx: PlanContext): Promise<Pla
       errors.push(`${p.walletLabel} would keep ${fmt(left)} ${p.symbol}, under your ${p.amount} ${p.symbol} reserve.`);
     }
   }
+  const afterMix = value();
+  for (const watch of ctx.watches) {
+    if ((watch.kind !== "allocation_min" && watch.kind !== "allocation_max") || watch.status !== "active") continue;
+    const p = watch.params as Record<string, unknown>;
+    const cls = String(p.cls) as AssetClass;
+    const target = Number(p.pct);
+    const share = (m: { total: number; byClass: Record<AssetClass, number> }) => (m.total > 0 ? (m.byClass[cls] / m.total) * 100 : 0);
+    const b = share(before);
+    const a = share(afterMix);
+    const min = watch.kind === "allocation_min";
+    if (min ? a < target && a < b - 0.05 : a > target && a > b + 0.05) {
+      warnings.push(`${cls === "stable" ? "Stablecoins" : cls} would ${min ? "fall" : "rise"} to ${a.toFixed(1)}% of the portfolio, ${min ? "below your minimum" : "above your maximum"} of ${target}%.`);
+    }
+  }
   for (const label of signers) {
     const w = wallet(label)!;
     const gas = w.chain === "base" ? "ETH" : "NEAR";
@@ -428,7 +442,7 @@ export async function checkPlan(input: PlanInput, ctx: PlanContext): Promise<Pla
 }
 
 /** Value by asset class across wallets and loans (collateral minus debt), as shares of net worth. */
-export function allocationOf(holdings: Holding[], positions: LendingPosition[]): { netWorthUsd: number; classes: Array<{ cls: AssetClass; usd: number; pct: number }> } {
+export function allocationOf(holdings: Holding[], positions: LendingPosition[]): Allocation {
   const byClass = Object.fromEntries(CLASSES.map((c) => [c, 0])) as Record<AssetClass, number>;
   for (const h of holdings) if (h.usd != null) byClass[assetClass(h.symbol)] += h.usd;
   for (const p of positions) {

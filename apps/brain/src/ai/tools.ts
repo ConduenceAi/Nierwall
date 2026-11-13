@@ -65,12 +65,13 @@ export const TOOL_DEFS = [
         "Propose a new watch when the user states a limit. It is NOT active until the user confirms it in the app. " +
         "Kinds: health_below {positionId, threshold, target, reason} where threshold is the floor that raises an alert and target the health a fix restores " +
         "(choose both from asset_volatility and the user's goals; floor above 1.05, target above the floor); liq_distance {positionId, pct}; price_below / price_above {symbol, price}; " +
-        "price_move {symbol, pct} (pct negative for a drop, measured from the current price); balance_min {walletLabel, symbol, amount}. " +
+        "price_move {symbol, pct} (pct negative for a drop, measured from the current price); balance_min {walletLabel, symbol, amount}; " +
+        "allocation_min / allocation_max {cls: stable|ETH|BTC|NEAR|other, pct, reason}: a share of net worth the user wants to keep at least / at most. " +
         "For ETH, NEAR or USDC use symbol. For any other token, call find_token first and pass coinId, symbol and name instead.",
       parameters: {
         type: "object",
         properties: {
-          kind: { type: "string", enum: ["health_below", "liq_distance", "price_below", "price_above", "price_move", "balance_min"] },
+          kind: { type: "string", enum: ["health_below", "liq_distance", "price_below", "price_above", "price_move", "balance_min", "allocation_min", "allocation_max"] },
           params: { type: "object", description: "Parameters for the kind. Use positionId values from get_portfolio." },
         },
         required: ["kind", "params"],
@@ -190,7 +191,7 @@ export function stressPosition(p: LendingPosition, symbol: Symbol, pct: number):
   return debt > 0 ? col / debt : null;
 }
 
-const ProposeInput = z.object({ kind: z.enum(["health_below", "liq_distance", "price_below", "price_above", "price_move", "balance_min"]), params: z.record(z.string(), z.unknown()) });
+const ProposeInput = z.object({ kind: z.enum(["health_below", "liq_distance", "price_below", "price_above", "price_move", "balance_min", "allocation_min", "allocation_max"]), params: z.record(z.string(), z.unknown()) });
 
 /** What the model sees of a checked plan: plain numbers, labels, no addresses. */
 function summarizePlan(p: Plan) {
@@ -268,6 +269,13 @@ export async function runTool(name: string, args: Record<string, unknown>, ctx: 
       const params = { ...input.params } as Record<string, any>;
       if ((input.kind === "health_below" || input.kind === "liq_distance") && !snap?.positions.some((p) => p.id === params.positionId)) {
         return { error: `Unknown positionId. Use one of: ${snap?.positions.map((p) => p.id).join(", ")}` };
+      }
+      if (input.kind === "allocation_min" || input.kind === "allocation_max") {
+        if (!["stable", "ETH", "BTC", "NEAR", "other"].includes(String(params.cls)) || !(Number(params.pct) > 0 && Number(params.pct) < 100)) {
+          return { error: "Give cls (stable, ETH, BTC, NEAR or other) and pct between 0 and 100." };
+        }
+        params.pct = Number(Number(params.pct).toFixed(1));
+        params.reason = String(params.reason ?? "").slice(0, 200);
       }
       if (input.kind === "health_below") {
         const floor = Number(params.threshold);

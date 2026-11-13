@@ -12,6 +12,7 @@ type Analysis = {
   findings: Finding[];
   healthBefore?: number | null;
   healthAfter?: number | null;
+  changes?: Array<{ label: string; value: string }>;
 };
 
 const HEADLINE: Record<Analysis["status"], string> = {
@@ -64,6 +65,11 @@ export const onTransaction: OnTransactionHandler = async ({ transaction, chainId
           </Text>
         </Row>
       ) : null}
+      {(result.changes ?? []).map((c) => (
+        <Row label={c.label}>
+          <Text>{c.value}</Text>
+        </Row>
+      ))}
       <Divider />
       {result.findings.map((f) => (
         <Box>

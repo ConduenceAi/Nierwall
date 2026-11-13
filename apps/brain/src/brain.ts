@@ -65,8 +65,10 @@ export class Brain extends EventEmitter {
   }
 
   private async runTick(): Promise<TickResult> {
-    const coinIds = this.store.listWatches("active").flatMap((w) => ((w.params as Record<string, unknown>).coinId ? [String((w.params as Record<string, unknown>).coinId)] : []));
-    const data = await this.portfolio.refresh(this.scenario.get(), coinIds);
+    const active = this.store.listWatches("active");
+    const coinIds = active.flatMap((w) => ((w.params as Record<string, unknown>).coinId ? [String((w.params as Record<string, unknown>).coinId)] : []));
+    const withAllocation = active.some((w) => w.kind === "allocation_min" || w.kind === "allocation_max");
+    const data = await this.portfolio.refresh(this.scenario.get(), coinIds, withAllocation);
     this.last = data;
     this.store.saveSnapshot(data.snapshot);
     this.emit("snapshot", data.snapshot);

@@ -2,6 +2,7 @@ import { decodeFunctionData, formatUnits, getAddress, isAddress, maxUint256, par
 import type { Brain } from "../brain.js";
 import { ADDRESSES } from "../config.js";
 import { poolAbi, readAave, simulateAave, type AaveAccountDetail, type AaveAction } from "../protocols/aave.js";
+import { KNOWN_SPENDERS, txEffects } from "./effects.js";
 
 export interface SnapFinding {
   severity: "info" | "warning" | "critical";
@@ -15,6 +16,8 @@ export interface SnapAnalysis {
   healthBefore?: number | null;
   healthAfter?: number | null;
   simulated?: boolean;
+  /** What the simulated transaction sends and brings back, e.g. "You send: 1,000 USDC ($1,000)". */
+  changes?: Array<{ label: string; value: string }>;
 }
 export interface SnapTxInput {
   chainId: string;
@@ -28,12 +31,6 @@ export interface PendingDeposit {
 }
 
 const erc20 = parseAbi(["function approve(address spender, uint256 amount) returns (bool)", "function transfer(address to, uint256 amount) returns (bool)"]);
-/** Spenders users commonly approve on Base. Unknown is not "bad", just worth a look. */
-const KNOWN_SPENDERS: Record<string, string> = {
-  [ADDRESSES.base.aavePool.toLowerCase()]: "Aave V3 Pool",
-  "0x000000000022d473030f116ddee9f6b43ac78ba3": "Permit2 (Uniswap)",
-  "0x6ff5693b99212da76ad316178a184ab56d299b43": "Uniswap Universal Router",
-};
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
 function chainNumber(chainId: string): number | null {
@@ -100,7 +97,7 @@ export async function analyzeTx(brain: Brain, input: SnapTxInput, pending: Pendi
     const sim = simulateAave(detail, action, asset, amount);
     if (!sim.supported) return verdict([{ severity: "warning", title: "Unknown Aave asset", detail: sim.reason }], "Unknown Aave asset");
     const floorWatch = brain.store.listWatches("active").find((w) => w.kind === "health_below" && (w.params as any).positionId === `aave:${label}`);
-    const floor = floorWatch ? Number((floorWatch.params as any).threshold) : 1.5;
+    const floor = floorWatch ? Number((floorWatch.params as any).threshold) : null;
     const after = sim.healthAfter;
     const before = sim.healthBefore;
     const verb = { supply: "Supplying", withdraw: "Withdrawing", borrow: "Borrowing", repay: "Repaying" }[action];
@@ -109,12 +106,13 @@ export async function analyzeTx(brain: Brain, input: SnapTxInput, pending: Pendi
     if (after == null) findings.push({ severity: "info", title: `${what}: no debt left`, detail: "No liquidation risk after this transaction." });
     else if (after < 1.0) findings.push({ severity: "critical", title: "This makes your Aave position liquidatable", detail: `${what}: ${move}. Liquidation starts below 1.00.` });
     else if (after < 1.1) findings.push({ severity: "critical", title: "Health would be dangerously low", detail: `${what}: ${move}. A small price move could liquidate you.` });
-    else if (after < floor) findings.push({ severity: "warning", title: `Below your ${floor.toFixed(2)} floor`, detail: `${what}: ${move}.` });
+    else if (floor != null && after < floor) findings.push({ severity: "warning", title: `Below your ${floor.toFixed(2)} floor`, detail: `${what}: ${move}.` });
     else findings.push({ severity: "info", title: `${what}`, detail: `${move}${after >= (before ?? 0) ? ", safer than now" : ""}. Estimate from on-chain weights; ignores eMode.` });
     return { ...verdict(findings, what), healthBefore: before, healthAfter: after };
   }
 
   // ---- ERC-20 approve / transfer ----
+  let what = "Contract call";
   if (to && data.length >= 10) {
     let decoded: ReturnType<typeof decodeFunctionData<typeof erc20>> | null = null;
     try {
@@ -156,15 +154,29 @@ export async function analyzeTx(brain: Brain, input: SnapTxInput, pending: Pendi
           findings.push({ severity: "warning", title: `${fromLabel} would drop below your USDC reserve`, detail: `${bal.toFixed(2)} → ${(bal - amount).toFixed(2)} USDC (minimum ${(rule.params as any).amount}).` });
         }
       }
-      return verdict(findings, "Token transfer");
+      what = "Token transfer";
     }
   }
 
   // ---- Native ETH transfer ----
-  if (to && (data === "0x" || data.length <= 2) && tx.value && BigInt(tx.value) > 0n) {
+  const plainSend = (data === "0x" || data.length <= 2) && !!tx.value && BigInt(tx.value) > 0n;
+  if (to && plainSend) {
     findings.push(own(to) ? { severity: "info", title: `To your own wallet "${own(to)!.label}"`, detail: "Moving ETH between your wallets." } : { severity: "warning", title: "Recipient isn't one of your wallets", detail: `Sending ETH to ${short(to)}.` });
-    return verdict(findings, "ETH transfer");
+    what = "ETH transfer";
   }
 
-  return { status: "unknown", summary: "Nierwall can't decode this transaction", findings: [{ severity: "info", title: "No analysis available", detail: "Nierwall doesn't recognize this contract call. This is not a safety verdict." }] };
+  // ---- Any call: simulate the exact transaction and check what it does to the user's money ----
+  let changes: SnapAnalysis["changes"];
+  if (from) {
+    const effects = await txEffects(brain, { from, to, data, value: tx.value }, what === "Contract call").catch(() => null);
+    if (effects) {
+      findings.push(...effects.findings);
+      changes = effects.rows.length ? effects.rows : undefined;
+    }
+  }
+  if (!findings.length && !changes) {
+    return { status: "unknown", summary: "Nierwall can't decode this transaction", findings: [{ severity: "info", title: "No analysis available", detail: "Nierwall couldn't simulate or recognize this call. This is not a safety verdict." }] };
+  }
+  if (!findings.length) findings.push({ severity: "info", title: "Simulated: nothing unusual", detail: "Checked against your positions, limits and portfolio mix." });
+  return { ...verdict(findings, what), changes };
 }

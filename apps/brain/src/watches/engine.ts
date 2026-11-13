@@ -24,6 +24,9 @@ function watchedPrice(p: Record<string, any>, snap: Snapshot): { price: number |
   return { price: snap.prices[p.symbol as Symbol]?.usd, name: String(p.symbol) };
 }
 
+export const CLASS_NAMES: Record<string, string> = { stable: "Stablecoins", ETH: "ETH", BTC: "BTC", NEAR: "NEAR", other: "Other tokens" };
+const className = (cls: unknown) => CLASS_NAMES[String(cls)] ?? String(cls);
+
 const coinName = (p: Record<string, any>) => (p.coinId && p.name ? `${p.symbol} (${p.name})` : String(p.symbol ?? p.coinId));
 
 function protocolName(positionId: string) {
@@ -106,6 +109,21 @@ export function evaluate(watch: Watch, snap: Snapshot): Evaluation {
         detail: `${sym} is ${usd(price)}, ${pct(Math.abs(change))} ${change < 0 ? "below" : "above"} ${usd(ref)} from when you set this watch.`,
       };
     }
+    case "allocation_min":
+    case "allocation_max": {
+      const target = Number(p.pct);
+      const min = watch.kind === "allocation_min";
+      if (!snap.allocation) return { ...base, unknown: true, title: "Portfolio mix unknown", detail: "Couldn't read wallet holdings." };
+      const share = snap.allocation.classes.find((c) => c.cls === p.cls)?.pct ?? 0;
+      return {
+        ...base,
+        value: share,
+        triggered: min ? share < target : share > target,
+        recovered: min ? share >= target + 1 : share <= target - 1,
+        title: `${className(p.cls)} ${min ? "below" : "above"} ${target}% of your portfolio`,
+        detail: `${className(p.cls)} ${p.cls === "stable" || p.cls === "other" ? "are" : "is"} ${share.toFixed(1)}% of your portfolio (your ${min ? "minimum" : "maximum"} is ${target}%).`,
+      };
+    }
     case "balance_min": {
       const bal = snap.balances.find((b) => b.walletLabel === p.walletLabel && b.symbol === p.symbol);
       const min = Number(p.amount);
@@ -148,6 +166,10 @@ export function describeWatch(kind: Watch["kind"], params: Record<string, any>):
       return `${coinName(params)} ${Number(params.pct) < 0 ? "drops" : "rises"} ${pct(Math.abs(Number(params.pct)))} from ${usd(Number(params.referencePrice))}`;
     case "balance_min":
       return `${params.walletLabel} holds less than ${params.amount} ${params.symbol}`;
+    case "allocation_min":
+      return `Keep ${className(params.cls)} at least ${params.pct}% of the portfolio`;
+    case "allocation_max":
+      return `Keep ${className(params.cls)} at most ${params.pct}% of the portfolio`;
     case "data_stale":
       return "Data sources stop answering";
   }
@@ -178,6 +200,8 @@ export function isNearLimit(e: Evaluation): boolean {
   if (e.watch.kind === "liq_distance") return e.value < Number(p.pct) * 1.5;
   if (e.watch.kind === "price_below") return e.value < Number(p.price) * 1.03;
   if (e.watch.kind === "price_above") return e.value > Number(p.price) * 0.97;
+  if (e.watch.kind === "allocation_min") return e.value < Number(p.pct) + 2;
+  if (e.watch.kind === "allocation_max") return e.value > Number(p.pct) - 2;
   if (e.watch.kind === "price_move") return Math.abs(e.value) > Math.abs(Number(p.pct)) * 0.7;
   return false;
 }

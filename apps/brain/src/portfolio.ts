@@ -1,5 +1,6 @@
 import { getAddress } from "viem";
 import { ADDRESSES, type Wallet, type WalletsConfig } from "./config.js";
+import { allocationOf } from "./advisor/plans.js";
 import { readHoldings, type Holding } from "./holdings.js";
 import { logger } from "./log.js";
 import { baseTokenBalance, readAave, type AaveAccountDetail } from "./protocols/aave.js";
@@ -37,7 +38,7 @@ export class Portfolio {
   }
 
   /** One full refresh: prices, watched lending positions, wallet balances used by fixes, and watched coins. */
-  async refresh(scenario: ScenarioState | null, coinIds: string[] = []): Promise<SnapshotWithDetail> {
+  async refresh(scenario: ScenarioState | null, coinIds: string[] = [], withAllocation = false): Promise<SnapshotWithDetail> {
     const errors: string[] = [];
     const aave = new Map<string, AaveAccountDetail>();
     const rhea = new Map<string, RheaAccountDetail>();
@@ -83,6 +84,13 @@ export class Portfolio {
       }
     }
     await Promise.all(jobs);
+    // Allocation needs every token in every wallet, so it's only read (and cached) when a watch uses it.
+    let allocation: Snapshot["allocation"];
+    if (withAllocation) {
+      const h = await this.holdings(scenario).catch((e) => ({ holdings: [] as Holding[], errors: [`holdings: ${String(e).slice(0, 120)}`] }));
+      errors.push(...h.errors);
+      if (!h.errors.length) allocation = allocationOf(h.holdings, [...rhea.values(), ...aave.values()].map((d) => d.position));
+    }
     if (errors.length) log.warn("refresh had errors", { count: errors.length, first: errors[0] });
 
     const snapshot: Snapshot = {
@@ -91,6 +99,7 @@ export class Portfolio {
       positions: [...rhea.values(), ...aave.values()].map((d) => d.position),
       balances,
       coins,
+      allocation,
       errors,
       scenario,
     };
