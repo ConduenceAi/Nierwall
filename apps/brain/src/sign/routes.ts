@@ -25,12 +25,15 @@ export function registerSignRoutes(app: Hono, brain: Brain, sessions: SignSessio
   // Fixes (from alerts) and checked plans (from the advisor) share one review route.
   app.post("/api/fixes/:fixId/review", async (c) => {
     const id = c.req.param("fixId");
+    // From the orb: open the page on one wallet (e.g. Meteor) and ask it to sign each step as it becomes ready.
+    const opts = z.object({ wallet: z.enum(["meteor-wallet"]).optional(), auto: z.boolean().optional() }).parse(await c.req.json().catch(() => ({})));
+    const query = new URLSearchParams({ ...(opts.wallet ? { wallet: opts.wallet } : {}), ...(opts.auto ? { auto: "1" } : {}) }).toString();
     const plan = id.startsWith("plan_") ? brain.store.kvGet<Plan>(`plan:${id}`) : null;
     const fix = plan ? null : findFix(brain, id);
     if (!plan && !fix) return c.json({ error: "Fix not found or expired" }, 404);
     try {
       const s = plan ? await sessions.createFromPlan(plan) : await sessions.create(fix!);
-      return c.json({ url: `http://127.0.0.1:${port}/sign/${s.token}`, session: s });
+      return c.json({ url: `http://127.0.0.1:${port}/sign/${s.token}${query ? `?${query}` : ""}`, session: s });
     } catch (e) {
       return c.json({ error: String(e instanceof Error ? e.message : e).slice(0, 300) }, 400);
     }

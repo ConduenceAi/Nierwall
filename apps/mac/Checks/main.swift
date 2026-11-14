@@ -93,5 +93,16 @@ print("Words")
 check(TurnTaking.vocabulary(of: "Repay $1,200 to stay above 20%").isSuperset(of: ["one", "thousand", "two", "hundred", "twenty", "percent"]), "numbers count in both forms")
 check(TurnTaking.withoutEcho("what about base", spoken: ["what"], upTo: 0) == "what about base", "nothing is stripped from a fresh turn")
 
+print("\"Should I send it to Meteor?\"")
+for yes in ["Yes", "yeah, send it", "Go ahead.", "let's do it", "OK", "sure, do it"] {
+    check(TurnTaking.answer(yes) == .yes, "\"\(yes)\" sends it")
+}
+for no in ["No", "not now", "don't send it", "cancel", "nope, leave it"] {
+    check(TurnTaking.answer(no) == .no, "\"\(no)\" doesn't")
+}
+for other in ["yes, but first what's the fee?", "wait", "what would my health be after that?", "yes I think so but let me check my balance on Arbitrum first please"] {
+    check(TurnTaking.answer(other) == .other, "\"\(other)\" is a new question, and nothing is sent")
+}
+
 print(failures == 0 ? "All turn-taking checks passed." : "\(failures) turn-taking check(s) failed.")
 exit(failures == 0 ? 0 : 1)

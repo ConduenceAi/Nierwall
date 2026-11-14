@@ -39,6 +39,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var voice: AnyObject?
     private var turns = TurnTaking()
     private var conversationStartedAt = Date.distantPast
+    /// What the orb offered to send ("Should I send it to Meteor?"). Only your next turn can answer it.
+    private var offer: Offer?
+    private struct Offer { let id: String; let title: String }
+    /// Signing news already told, so each is said once.
+    private var told = Set<String>()
     /// Where the overlay's question sits in brain.items; its answer is the next assistant item after it.
     private var awaitingReply: Int?
     private var replyTimeout: Timer?
@@ -73,9 +78,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         brain.onReply = { [weak self] reply in
             guard let self else { return }
-            if self.ui.voiceTurn && self.ui.speakReplies { self.answer(reply.speak) }
+            if self.ui.voiceTurn && self.ui.speakReplies { self.answer(reply.speak, offering: self.sendable(reply.cards)) }
             self.ui.voiceTurn = false
         }
+        brain.onSignUpdate = { [weak self] update in self?.signUpdated(update) }
         brain.onReviewRequested = { [weak self] _ in self?.showPanel() }
         notifier.onOpen = { [weak self] _ in self?.showPanel() }
         notifier.onSnooze = { [weak self] id in Task { await self?.brain.snooze(id) } }
@@ -250,6 +256,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 session.beginTurn()
                 return listen()
             }
+            // Your answer to "Should I send it to Meteor?". Anything but a clear yes sends nothing.
+            if let offer {
+                self.offer = nil
+                switch TurnTaking.answer(text) {
+                case .yes: return send(offer)
+                case .no: return answer("Okay, I won't send it.")
+                case .other: break
+                }
+            }
             ask(text)
         }
     }
@@ -269,13 +284,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// The orb says the answer and keeps listening while it talks, so you can cut in.
-    private func answer(_ text: String) {
+    /// The orb says the answer and keeps listening while it talks, so you can cut in. With something to sign, it
+    /// asks whether to send it to Meteor, and your next turn answers that.
+    private func answer(_ text: String, offering: Offer? = nil) {
         guard #available(macOS 26.0, *), let session, !text.isEmpty else { return }
+        offer = offering
+        let said = offering == nil ? text : "\(text) Should I send it to Meteor?"
         overlay.model.phase = .answer
-        turns.orbSays(text, at: Date())
+        turns.orbSays(said, at: Date())
         session.beginTurn()
-        session.say(text)
+        session.say(said)
+    }
+
+    /// The first thing in a reply you could send to your wallet: a checked plan, or a fix that isn't hypothetical.
+    private func sendable(_ cards: [Card]) -> Offer? {
+        for card in cards {
+            switch card {
+            case .plan(let p) where p.steps.contains(where: { !$0.manual }): return Offer(id: p.planId, title: p.title)
+            case .fix(let f) where !f.fix.notes.contains(where: { $0.contains("hypothetical") }): return Offer(id: f.fix.id, title: f.fix.title)
+            default: continue
+            }
+        }
+        return nil
+    }
+
+    /// You said yes: the brain opens the checked steps, re-quoting anything that moves money, and the page asks
+    /// Meteor to sign each one as it becomes ready. You approve every step in Meteor; the orb says when it's done.
+    private func send(_ offer: Offer) {
+        overlay.model.phase = .thinking
+        Task {
+            if let error = await brain.review(fixId: offer.id, wallet: "meteor-wallet") { return answer("I couldn't open it. \(error)") }
+            answer("Opening Meteor. Approve it there, and I'll tell you when it's done.")
+        }
+    }
+
+    /// A signing session moved on: say when it's done, or when a step failed, once each.
+    private func signUpdated(_ update: SignUpdate) {
+        if update.done, told.insert("\(update.token):done").inserted {
+            let health = update.healthAfter.map { String(format: " Rhea health should now be about %.2f.", $0) } ?? ""
+            tell("Done: \(update.title).\(health)")
+        }
+        for step in update.steps where step.state == "failed" && told.insert("\(update.token):\(step.id)").inserted {
+            tell("That didn't go through: \(step.title).")
+        }
+    }
+
+    /// News about something you asked for: a notification, and spoken too if you're mid-conversation and not talking.
+    private func tell(_ text: String) {
+        notifier.postInfo(title: "Nierwall", body: text)
+        if voice != nil, overlay.model.phase == .listening, !turns.hasSaid { answer(text) }
     }
 
     private func deliverReply(_ items: [ChatItem]) {
@@ -311,6 +368,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func endConversation(saying message: String? = nil) {
         if #available(macOS 26.0, *), let session { session.stop() }
         voice = nil
+        offer = nil
         ui.listening = false
         guard let message else { return overlay.hide() }
         overlay.showMessage()
@@ -322,6 +380,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func overlayClosed() {
         if #available(macOS 26.0, *), let session { session.stop() }
         voice = nil
+        offer = nil
         ui.listening = false
         if awaitingReply != nil {
             awaitingReply = nil

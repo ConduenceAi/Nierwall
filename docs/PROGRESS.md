@@ -31,6 +31,11 @@ Last updated: 2026-11-13 (night, IST). Deadline: 2026-11-14 23:59 UTC. Judging 1
 
 ## Log
 
+- **2026-11-14 (late morning)** The orb sends transactions through Meteor: when an answer is a fix or plan, it says
+  what it does and asks "Should I send it to Meteor?". A clear yes opens the review page on Meteor (NEAR Connect,
+  straight to the extension), which asks for each step as it becomes ready; you approve in Meteor, and the orb and a
+  notification say when it's done or a step failed. Anything but a clear yes sends nothing (15 new offline checks).
+  Adding collateral on Rhea is now a real transaction (plain NEAR is wrapped in the same call). 65 tests pass.
 - **2026-11-14 (morning)** Rhea only, for now: Aave is out of watching, fixes, plans, signing and the Snap, to keep
   the focus on NEAR. NEAR's price still comes from Rhea's oracle; ETH and USDC now come from the market. EVM wallets
   are still read on every network for cash. The demo's EVM wallet is now "Demo EVM wallet".

@@ -40,6 +40,14 @@ interface Eip1193 {
 }
 
 const token = location.pathname.split("/").filter(Boolean)[1] ?? "";
+// Opened by the orb after you said yes: go straight to that wallet (Meteor) and ask it to sign each step as it becomes
+// ready, once. You still approve every step in the wallet.
+const params = new URLSearchParams(location.search);
+const walletId = params.get("wallet");
+const auto = params.get("auto") === "1";
+const asked = new Set<string>();
+/** Steps waiting on a wallet right now. */
+const inFlight = new Set<string>();
 const $ = (id: string) => document.getElementById(id)!;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
@@ -93,7 +101,7 @@ async function sendEvm(step: Step) {
 let connector: NearConnector | null = null;
 async function sendNear(step: Step) {
   connector ??= new NearConnector({ network: "mainnet" } as any);
-  const wallet = await connector.connect();
+  const wallet = await connector.connect(walletId ? { walletId } : undefined);
   const accounts = await wallet.getAccounts();
   const accountId = accounts[0]?.accountId;
   if (accountId !== step.expectedSigner) {
@@ -119,30 +127,51 @@ function render(s: Session) {
     .map((st, i) => {
       const action =
         st.state === "ready" && st.kind === "evm" ? `<button data-step="${st.id}">Sign with MetaMask on ${esc(st.evmTx?.network.name ?? "EVM")}</button>` :
-        st.state === "ready" && st.kind === "near" && st.nearTx ? `<button data-step="${st.id}">Sign with your NEAR wallet</button>` :
+        st.state === "ready" && st.kind === "near" && st.nearTx ? `<button data-step="${st.id}">Sign with ${walletId === "meteor-wallet" ? "Meteor" : "your NEAR wallet"}</button>` :
         st.state === "ready" && st.link ? `<a class="button" href="${esc(st.link)}" target="_blank" rel="noopener">Open Rhea</a> <button data-step="${st.id}" data-manual="1">I've done this</button>` : "";
       const hash = st.txHash ? `<div class="hash">tx ${esc(st.txHash.slice(0, 18))}…</div>` : "";
       return `<li class="step ${st.state}"><div class="n">${i + 1}</div><div class="body"><div class="t">${esc(st.title)} <span class="state">${st.state}</span></div><div class="d">${esc(st.detail)}</div>${hash}${action}</div></li>`;
     })
     .join("");
   $("done").hidden = !s.done;
-  document.querySelectorAll<HTMLButtonElement>("button[data-step]").forEach((b) =>
-    b.addEventListener("click", async () => {
-      const step = s.steps.find((x) => x.id === b.dataset.step)!;
-      b.disabled = true;
-      $("error").textContent = "";
-      try {
-        if (b.dataset.manual) await api(`/steps/${step.id}`, { txHash: "manual-done" });
-        else if (step.kind === "evm") await sendEvm(step);
-        else await sendNear(step);
-        await refresh();
-      } catch (e: any) {
-        $("error").textContent = e?.message ?? String(e);
-        b.disabled = false;
-      }
-    }),
-  );
+  document.querySelectorAll<HTMLButtonElement>("button[data-step]").forEach((b) => {
+    const step = s.steps.find((x) => x.id === b.dataset.step)!;
+    b.disabled = inFlight.has(step.id);
+    b.addEventListener("click", () => void sign(step, !!b.dataset.manual));
+  });
+  // From the orb: hand the next ready step to the wallet, once. A step you turn down waits for a click.
+  const next = auto && !s.done && !inFlight.size
+    ? s.steps.find((st) => st.state === "ready" && (st.kind === "evm" || (st.kind === "near" && st.nearTx)) && !asked.has(st.id))
+    : undefined;
+  if (next) {
+    asked.add(next.id);
+    void sign(next, false);
+  }
+  const waiting = s.steps.find((st) => inFlight.has(st.id));
+  const sent = s.steps.find((st) => st.state === "submitted" && st.kind !== "intents");
+  const n = (st: Step) => s.steps.indexOf(st) + 1;
+  $("status").textContent = waiting && waiting.kind !== "link" ? `Waiting for you to approve step ${n(waiting)} in ${walletName(waiting)}.`
+    : sent ? `Step ${n(sent)} sent. Waiting for the network to confirm it.` : "";
 }
+
+/** Hands a step to its wallet (or marks a manual step done), then shows the result. */
+async function sign(step: Step, manual: boolean) {
+  if (inFlight.has(step.id)) return;
+  inFlight.add(step.id);
+  $("error").textContent = "";
+  try {
+    if (manual) await api(`/steps/${step.id}`, { txHash: "manual-done" });
+    else if (step.kind === "evm") await sendEvm(step);
+    else await sendNear(step);
+  } catch (e: any) {
+    $("error").textContent = e?.message ?? String(e);
+  } finally {
+    inFlight.delete(step.id);
+    await refresh();
+  }
+}
+
+const walletName = (step: Step) => (step.kind === "evm" ? "MetaMask" : walletId === "meteor-wallet" ? "Meteor" : "your NEAR wallet");
 
 async function refresh() {
   try {

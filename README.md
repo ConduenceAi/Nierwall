@@ -42,6 +42,12 @@ to act on, such as a fix with a **Review & sign** button or a new watch to confi
 the menu bar with the details while you keep talking. Nierwall starts a new watch only after you confirm it. The full chat history, with
 health gauges and alerts, is always one click away on the shield in the menu bar.
 
+When an answer is something to sign, such as repaying your Rhea loan, the orb says what it does and asks "Should I
+send it to Meteor?" Say yes and it opens Meteor Wallet with the first step; you approve each step there, and the orb
+tells you when it's done. Your keys never leave Meteor, and Meteor runs no code from Nierwall: Nierwall checks the
+transaction first, and Meteor signs and sends it. Only a clear yes counts. "Yes, but first…" or a new question sends
+nothing.
+
 Speech recognition runs on the Mac, and the audio never leaves it. The orb's voice goes through Apple's echo
 cancellation, so the mic hears you and not the orb. ⌘⌥ is detected without keyboard permissions, so Nierwall
 never sees what you type, and pressing another key with ⌘⌥ (a shortcut like ⌘⌥Esc) doesn't trigger it. Esc
@@ -79,7 +85,9 @@ Here is an alert from `pnpm demo` (shortened), on a public account during a simu
 Fix A moves money between chains with **NEAR Intents**. Before you see it, Nierwall gets a live quote and checks
 it: the money goes to your own account, the route and amount match, the minimum you receive is within slippage,
 and there's enough time to send. A review page then hands each step to your own wallet: MetaMask for EVM networks
-(it switches MetaMask to the right one, and adds it if MetaMask doesn't have it yet), your NEAR wallet for NEAR. Nierwall follows the transfer and the repayment until both are confirmed.
+(it switches MetaMask to the right one, and adds it if MetaMask doesn't have it yet), and Meteor or another NEAR wallet
+for NEAR. Say yes to the orb and the page goes straight to Meteor and asks for each step as it's ready. Nierwall
+follows the transfer and the repayment until both are confirmed.
 
 ### 3. It advises, and checks every plan
 
@@ -266,12 +274,13 @@ watches the same public demo accounts as `pnpm demo`. There's nothing to sign wi
 | Watch any token | "Tell me if SOL drops below $70" | A watch on SOL's price, to confirm |
 | Set a target mix | "Keep at least 20% in stablecoins" | A mix watch, to confirm; the Snap and plans now respect it |
 | Ask for a plan | "Rebalance me toward 30% stablecoins" | Plan cards with health and mix before/after, cost, and **Review & sign** |
+| Send it to Meteor (needs your wallets in `config/wallets.json` and the Meteor extension) | Ask "How do I make my Rhea loan safer?", then say "yes" when the orb asks | Meteor opens with the first step to approve; the orb says when it's done |
 | Simulate a crash | `pnpm simulate NEAR -9` (undo with `pnpm simulate off`) | An alert labeled SIMULATED on the Mac and in Telegram, with fixes |
 | Get alerts on your phone | Click "Get alerts on Telegram" in the panel, then tap Start in Telegram | "Linked" in Telegram |
 | Check a transaction | `pnpm snap`, then open `http://127.0.0.1:7420/snap/install` in a browser with MetaMask Flask | Nierwall's panel in MetaMask's confirmation screen |
 | Keep it running | `pnpm always-on` (undo with `sh ops/uninstall-always-on.sh`) | Brain, memory and app start at login and restart if they crash |
 
-Tests: `pnpm test` runs 62 brain tests, 4 of them against mainnet (`OFFLINE=1 pnpm test` skips those), and `apps/mac/scripts/check.sh` checks the voice turn-taking.
+Tests: `pnpm test` runs 65 brain tests, 4 of them against mainnet (`OFFLINE=1 pnpm test` skips those), and `apps/mac/scripts/check.sh` checks the voice turn-taking.
 
 ## Status
 
@@ -299,7 +308,8 @@ The full tracker is in [docs/PROGRESS.md](docs/PROGRESS.md). The original design
 ### Known limits
 
 - Checks pause while your Mac sleeps or is offline, because the brain runs on your Mac.
-- Adding or withdrawing Rhea collateral opens the Rhea app instead of building the transaction.
+- Withdrawing Rhea collateral opens the Rhea app instead of building the transaction, since it needs Rhea's live
+  price data. Repaying and adding collateral are built and signed in your wallet.
 - Wallets are read on NEAR and the ten EVM networks above, for the tokens NEAR Intents lists. Solana, Bitcoin and
   other non-EVM chains, and EVM networks NEAR Intents added recently (such as Monad), aren't counted yet.
 - Loans: Rhea only. Aave support was taken out for now, to keep the focus on NEAR.

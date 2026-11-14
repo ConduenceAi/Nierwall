@@ -8,7 +8,7 @@ import { quote, swapStatus, type Quote } from "../intents/oneclick.js";
 import { logger } from "../log.js";
 import { usdcOn } from "../planner/fixes.js";
 import { rheaAssets } from "../protocols/rhea.js";
-import { toRaw, type TokenInfo } from "../tokens.js";
+import { toRaw, tokenList, type TokenInfo } from "../tokens.js";
 import type { FixOption } from "../types.js";
 
 const log = logger("sign");
@@ -90,6 +90,25 @@ async function rheaRepayTx(tokenId: string, amountRaw: bigint) {
           deposit: "1",
         },
       },
+    ],
+  };
+}
+
+/**
+ * Rhea add collateral: deposit the token and mark it as collateral in one call. Native NEAR is wrapped to wNEAR first,
+ * in the same transaction. No price data is needed, since more collateral only makes the loan safer.
+ */
+async function rheaCollateralTx(token: TokenInfo, tokenId: string, amountRaw: bigint, account: string) {
+  const assets = await rheaAssets();
+  const extra = BigInt(assets[tokenId]?.config?.extra_decimals ?? 0);
+  const msg = JSON.stringify({ Execute: { actions: [{ IncreaseCollateral: { token_id: tokenId, max_amount: (amountRaw * 10n ** extra).toString() } }] } });
+  const wrap = !token.contract;
+  return {
+    receiverId: tokenId,
+    actions: [
+      // A transaction gets 300 Tgas in all: small calls for wrapping, the rest for Rhea.
+      ...(wrap ? [fc("storage_deposit", { account_id: account, registration_only: true }, NEAR_STORAGE, "10000000000000"), fc("near_deposit", {}, amountRaw.toString(), "10000000000000")] : []),
+      fc("ft_transfer_call", { receiver_id: ADDRESSES.near.rhea, amount: amountRaw.toString(), msg }, "1", wrap ? "250000000000000" : NEAR_GAS),
     ],
   };
 }
@@ -211,11 +230,13 @@ export class SignSessions {
         nearTx: await rheaRepayTx(ADDRESSES.near.usdc, BigInt(Math.round(plan.amountUsdc * 1e6))),
       });
     } else {
+      const w = this.wallet(plan.wallet);
+      const near = (await tokenList()).find((t) => t.chain === "near" && !t.contract)!;
       session.steps.push({
-        id: "manual", kind: "link", chain: "near", wallet: plan.wallet, expectedSigner: null, state: "ready",
-        title: `Add ${plan.amountNear.toLocaleString("en-US")} NEAR as collateral in the Rhea app`,
-        detail: "Nierwall can't build this transaction yet. Open Rhea, supply NEAR and enable it as collateral.",
-        link: "https://app.rhea.finance/",
+        id: "near_collateral", kind: "near", chain: "near", wallet: w.label, expectedSigner: w.address, state: "ready",
+        title: `Add ${plan.amountNear.toLocaleString("en-US")} NEAR as collateral on Rhea`,
+        detail: "Wraps the NEAR and adds it as collateral in one transaction. Your NEAR wallet asks you to approve it.",
+        nearTx: await rheaCollateralTx(near, ADDRESSES.near.wnear, toRaw(plan.amountNear, near.decimals), w.address),
       });
     }
     this.sessions.set(session.token, session);
@@ -274,12 +295,19 @@ export class SignSessions {
         continue;
       }
 
-      // Rhea: repay builds the transaction; collateral changes are done in the Rhea app.
+      // Rhea: repay and add collateral are built here; withdrawing collateral is done in the Rhea app.
       if (ps.type === "repay" && ps.token.contract) {
         push({
           kind: "near", chain: "near", wallet: w.label, expectedSigner: w.address,
           title: `Repay ${fmt(ps.amount)} ${ps.token.symbol} on Rhea`, detail: "Your NEAR wallet asks you to approve one transaction.",
           nearTx: await rheaRepayTx(ps.protocolToken!, amountRaw),
+        });
+      } else if (ps.type === "add_collateral") {
+        push({
+          kind: "near", chain: "near", wallet: w.label, expectedSigner: w.address,
+          title: `Add ${fmt(ps.amount)} ${ps.token.symbol} as collateral on Rhea`,
+          detail: `${ps.token.contract ? "" : "Wraps the NEAR and adds it in one transaction. "}Your NEAR wallet asks you to approve it.`,
+          nearTx: await rheaCollateralTx(ps.token, ps.protocolToken!, amountRaw, w.address),
         });
       } else {
         push({

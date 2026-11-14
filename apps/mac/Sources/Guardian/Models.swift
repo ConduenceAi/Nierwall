@@ -121,6 +121,16 @@ enum Card: Decodable, Equatable, Identifiable {
     }
 }
 
+/// A signing session's progress, sent by the brain as each step moves on.
+struct SignUpdate: Decodable, Equatable {
+    struct Step: Decodable, Equatable { let id: String; let title: String; let state: String; let kind: String }
+    let token: String
+    let title: String
+    let done: Bool
+    let healthAfter: Double?
+    let steps: [Step]
+}
+
 struct Reply: Decodable, Equatable {
     let text: String
     let speak: String

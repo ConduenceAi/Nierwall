@@ -137,6 +137,29 @@ struct TurnTaking {
         return yours.count >= 2 || yours.contains(where: Self.stopWords.contains) ? .cutIn : nil
     }
 
+    // MARK: Yes or no
+
+    enum Answer: Equatable { case yes, no, other }
+
+    /// Your answer when the orb asks "Should I send it to Meteor?". Only a short, clear yes counts as yes: "yes, but
+    /// first…" or a new question is something else, and nothing is sent.
+    static func answer(_ text: String) -> Answer {
+        let w = words(text)
+        guard let first = w.first else { return .other }
+        let two = w.prefix(2).joined(separator: " ")
+        if w.contains(where: ["but", "wait", "first", "not", "don", "dont", "cancel", "stop"].contains) {
+            return no.contains(first) || noPhrases.contains(two) || w.contains("cancel") ? .no : .other
+        }
+        if no.contains(first) || noPhrases.contains(two) { return .no }
+        guard w.count <= 6 else { return .other }
+        return yes.contains(first) || yesPhrases.contains(two) ? .yes : .other
+    }
+
+    private static let yes: Set<String> = ["yes", "yeah", "yep", "yup", "sure", "ok", "okay", "confirm", "absolutely", "definitely", "please"]
+    private static let yesPhrases: Set<String> = ["do it", "go ahead", "send it", "go for", "sounds good", "let s", "of course"]
+    private static let no: Set<String> = ["no", "nope", "nah", "cancel", "stop", "don", "dont", "never"]
+    private static let noPhrases: Set<String> = ["not now", "hold off", "not yet"]
+
     // MARK: Words
 
     /// Said on their own over the orb, these stop it.

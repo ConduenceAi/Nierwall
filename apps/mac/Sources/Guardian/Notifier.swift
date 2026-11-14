@@ -16,6 +16,15 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         center.setNotificationCategories([UNNotificationCategory(identifier: "GUARDIAN_ALERT", actions: [review, snooze], intentIdentifiers: [])])
     }
 
+    /// News without actions, like "Done: repaid 500 USDC on Rhea".
+    func postInfo(title: String, body: String) {
+        let c = UNMutableNotificationContent()
+        c.title = title
+        c.body = body
+        c.sound = .default
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: c, trigger: nil))
+    }
+
     func post(title: String, body: String, alertId: String, incidentId: String, critical: Bool) {
         let center = UNUserNotificationCenter.current()
         let send = {

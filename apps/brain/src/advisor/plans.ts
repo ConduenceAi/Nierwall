@@ -365,15 +365,16 @@ export async function checkPlan(input: PlanInput, ctx: PlanContext): Promise<Pla
         entry = { symbol: r.symbol, token: r.tokenId, amount: 0, price: r.usd, weight: r.vr };
         loan.col.push(entry);
       }
-      const tok = tokenOn(loanNet, entry.symbol, what);
+      // "NEAR" is the plain NEAR in the wallet, wrapped in the same transaction; "wNEAR" is already wrapped.
+      const tok = tokenOn(loanNet, same(a.token, "NEAR") ? "NEAR" : entry.symbol, what);
       if (!tok || !notProtected(w, what)) continue;
       const amount = resolve(a, spendable(w, tok), entry.price, what);
       if (amount == null || !debit(w, tok, amount, what)) continue;
       entry.amount += amount;
       signers.add(`${w.label}\u0000${loanNet}`);
       steps.push({
-        n, type: "add_collateral", chain: loanNet, wallet: w.label, execution: "manual", token: tok, amount, protocol: a.protocol, protocolToken: entry.token,
-        description: `Add ${fmt(amount)} ${entry.symbol} as ${protoName} collateral from ${w.label} (in the Rhea app)`,
+        n, type: "add_collateral", chain: loanNet, wallet: w.label, execution: "sign", token: tok, amount, protocol: a.protocol, protocolToken: entry.token,
+        description: `Add ${fmt(amount)} ${entry.symbol} as ${protoName} collateral from ${w.label}`,
       });
       continue;
     }

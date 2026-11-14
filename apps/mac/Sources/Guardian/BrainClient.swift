@@ -16,6 +16,8 @@ final class BrainClient: ObservableObject {
     var onAlert: ((AlertCard, [Card]) -> Void)?
     var onReply: ((Reply) -> Void)?
     var onReviewRequested: ((String) -> Void)?
+    /// A signing session moved on (a step confirmed or failed, or it's done).
+    var onSignUpdate: ((SignUpdate) -> Void)?
 
     private var task: URLSessionWebSocketTask?
     private var runtime: RuntimeInfo?
@@ -94,6 +96,8 @@ final class BrainClient: ObservableObject {
             }
         case "review":
             if let id = obj["alertId"] as? String { onReviewRequested?(id) }
+        case "sign":
+            if let d = sub("session"), let update = try? JSONDecoder().decode(SignUpdate.self, from: d) { onSignUpdate?(update) }
         case "error":
             thinking = false
             items.append(ChatItem(role: .assistant, text: "Something went wrong: \(obj["message"] as? String ?? "unknown error")"))
@@ -152,8 +156,11 @@ final class BrainClient: ObservableObject {
     }
 
     /// Opens the local review-and-sign page for a fix. Returns an error message if it can't.
-    func review(fixId: String) async -> String? {
-        guard let obj = await request("POST", "/api/fixes/\(fixId)/review") else { return "Nierwall's brain didn't answer." }
+    /// Opens a fix or plan to sign. With a wallet (the orb's "send it to Meteor"), the page goes straight to that
+    /// wallet and asks it to sign each step as it becomes ready; you still approve every one there.
+    func review(fixId: String, wallet: String? = nil) async -> String? {
+        let body: [String: Any]? = wallet.map { ["wallet": $0, "auto": true] }
+        guard let obj = await request("POST", "/api/fixes/\(fixId)/review", body: body) else { return "Nierwall's brain didn't answer." }
         if let urlString = obj["url"] as? String, let url = URL(string: urlString) {
             NSWorkspace.shared.open(url)
             return nil
