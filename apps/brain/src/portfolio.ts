@@ -18,7 +18,12 @@ export interface SnapshotWithDetail {
 export class Portfolio {
   private holdingsCache: { at: number; key: string; data: { holdings: Holding[]; errors: string[] } } | null = null;
 
-  constructor(readonly wallets: WalletsConfig) {}
+  /** Reads the brain's wallets each time, so connecting or removing one takes effect on the next refresh. */
+  constructor(private readonly config: () => WalletsConfig) {}
+
+  get wallets(): WalletsConfig {
+    return this.config();
+  }
 
   /** Every token in every wallet. Cached (2 minutes by default) so the APIs aren't hit on every tick. */
   async holdings(scenario: ScenarioState | null, maxAgeMs = 120_000) {
@@ -54,10 +59,13 @@ export class Portfolio {
     if (coinIds.length) {
       jobs.push(coinPrices(coinIds).then((c) => void (coins = c)).catch((e) => void errors.push(`coin prices: ${String(e).slice(0, 120)}`)));
     }
-    for (const label of this.wallets.watchRhea) {
-      const w = this.wallet(label);
-      if (!w || w.chain !== "near") continue;
-      jobs.push(readRhea(label, w.address, scenario).then((d) => void rhea.set(label, d)).catch((e) => void errors.push(`rhea:${label}: ${String(e).slice(0, 120)}`)));
+    // Every NEAR wallet is checked for a Rhea loan; one with nothing on Rhea simply has no position.
+    for (const w of this.wallets.wallets.filter((x) => x.chain === "near")) {
+      jobs.push(
+        readRhea(w.label, w.address, scenario)
+          .then((d) => void (d.position.collateral.length || d.position.debt.length ? rhea.set(w.label, d) : undefined))
+          .catch((e) => void errors.push(`rhea:${w.label}: ${String(e).slice(0, 120)}`)),
+      );
     }
 
     // Every token in every wallet on every network (cached): fixes look for spare cash wherever it is.

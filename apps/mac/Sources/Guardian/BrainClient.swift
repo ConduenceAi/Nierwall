@@ -12,6 +12,7 @@ final class BrainClient: ObservableObject {
     @Published var items: [ChatItem] = []
     @Published var positions: [PositionCard] = []
     @Published var thinking = false
+    @Published var connections: Connections?
 
     var onAlert: ((AlertCard, [Card]) -> Void)?
     var onReply: ((Reply) -> Void)?
@@ -78,9 +79,14 @@ final class BrainClient: ObservableObject {
         switch type {
         case "hello":
             if let d = sub("status") { status = try? JSONDecoder().decode(BrainStatus.self, from: d) }
-            Task { await loadPortfolio() }
+            Task { await loadPortfolio(); await loadConnections() }
         case "snapshot":
-            Task { await loadPortfolio(); await loadStatus() }
+            Task { await loadPortfolio(); await loadStatus(); await loadConnections() }
+        case "connections":
+            if let d = sub("connections") { connections = try? JSONDecoder().decode(Connections.self, from: d) }
+        case "open":
+            // A page on this Mac the agent opened for you, like the one to connect a wallet.
+            if let s = obj["url"] as? String, let url = URL(string: s), url.host == "127.0.0.1" { NSWorkspace.shared.open(url) }
         case "alert":
             if let d = sub("alert"), let cards = try? JSONDecoder().decode([Card].self, from: d),
                case .alert(let a)? = cards.first {
@@ -142,6 +148,40 @@ final class BrainClient: ObservableObject {
         positions = decoded.compactMap { if case .position(let p) = $0 { return p } else { return nil } }
     }
 
+    func loadConnections() async {
+        guard let obj = await request("GET", "/api/connections"), let d = try? JSONSerialization.data(withJSONObject: obj) else { return }
+        connections = try? JSONDecoder().decode(Connections.self, from: d)
+    }
+
+    /// Opens the local page where you pick Meteor, MetaMask or another wallet; Nierwall reads only the address.
+    func connectWallet() async -> String? {
+        guard let obj = await request("POST", "/api/connect") else { return "Nierwall's brain didn't answer." }
+        guard let s = obj["url"] as? String, let url = URL(string: s) else { return obj["error"] as? String ?? "Couldn't open the connect page." }
+        NSWorkspace.shared.open(url)
+        return nil
+    }
+
+    func removeWallet(_ label: String) async {
+        let path = label.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? label
+        _ = await request("DELETE", "/api/wallets/\(path)")
+        await loadConnections()
+    }
+
+    /// Turns the demo accounts or transaction safety on or off.
+    func setFeature(demo: Bool? = nil, transactionSafety: Bool? = nil) async {
+        var body: [String: Any] = [:]
+        if let demo { body["demo"] = demo }
+        if let transactionSafety { body["transactionSafety"] = transactionSafety }
+        guard let obj = await request("POST", "/api/settings", body: body), let d = try? JSONSerialization.data(withJSONObject: obj) else { return }
+        connections = try? JSONDecoder().decode(Connections.self, from: d)
+    }
+
+    /// The one-time page that installs the Nierwall Snap into MetaMask Flask.
+    func openSnapInstall() {
+        guard let runtime, let url = URL(string: "http://127.0.0.1:\(runtime.port)/snap/install") else { return }
+        NSWorkspace.shared.open(url)
+    }
+
     func loadStatus() async {
         guard let obj = await request("GET", "/api/status"), let d = try? JSONSerialization.data(withJSONObject: obj) else { return }
         status = try? JSONDecoder().decode(BrainStatus.self, from: d)
@@ -156,10 +196,11 @@ final class BrainClient: ObservableObject {
     }
 
     /// Opens the local review-and-sign page for a fix. Returns an error message if it can't.
-    /// Opens a fix or plan to sign. With a wallet (the orb's "send it to Meteor"), the page goes straight to that
-    /// wallet and asks it to sign each step as it becomes ready; you still approve every one there.
-    func review(fixId: String, wallet: String? = nil) async -> String? {
-        let body: [String: Any]? = wallet.map { ["wallet": $0, "auto": true] }
+    /// Opens a fix or plan to sign. With auto (the orb's "send it to your wallet"), the page asks the wallet to sign each
+    /// step as it becomes ready, going straight to Meteor when that's named; you still approve every one there.
+    func review(fixId: String, wallet: String? = nil, auto: Bool = false) async -> String? {
+        var body: [String: Any]? = auto ? ["auto": true] : nil
+        if let wallet { body?["wallet"] = wallet }
         guard let obj = await request("POST", "/api/fixes/\(fixId)/review", body: body) else { return "Nierwall's brain didn't answer." }
         if let urlString = obj["url"] as? String, let url = URL(string: urlString) {
             NSWorkspace.shared.open(url)

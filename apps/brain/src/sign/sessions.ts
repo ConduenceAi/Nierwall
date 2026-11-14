@@ -3,7 +3,7 @@ import { encodeFunctionData, erc20Abi, getAddress, type Hex } from "viem";
 import { assetClass, type Plan, type PlanStep } from "../advisor/plans.js";
 import type { Brain } from "../brain.js";
 import { evmChain, evmClient, evmNetwork, networkName } from "../chains.js";
-import { ADDRESSES, FIXTURE_WALLETS, type EvmNetwork, type Network, type Wallet } from "../config.js";
+import { ADDRESSES, type EvmNetwork, type Network, type Wallet } from "../config.js";
 import { quote, swapStatus, type Quote } from "../intents/oneclick.js";
 import { logger } from "../log.js";
 import { usdcOn } from "../planner/fixes.js";
@@ -169,7 +169,7 @@ export class SignSessions {
   }
 
   private newSession(id: string, title: string, healthBefore: number | null, healthAfter: number | null): SignSession {
-    if (this.brain.wallets === FIXTURE_WALLETS) throw new Error("These are public demo accounts, so there's nothing for you to sign. Add your own wallets in config/wallets.json to review and sign fixes.");
+    if (this.brain.usingDemo) throw new Error("These are public demo accounts, so there's nothing for you to sign. Connect your own wallet in Nierwall to review and sign fixes.");
     return {
       token: randomBytes(18).toString("base64url"), fixId: id, title, createdAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),

@@ -28,6 +28,13 @@ leaves the signing to you.
 
 ### 1. You talk to it
 
+Nierwall starts with nothing connected and nothing turned on. Press **⌘⌥** and say "help me set up": the orb explains
+what it does and connects a wallet. It opens a page on your Mac where you pick Meteor, MetaMask or another wallet,
+and Nierwall reads only the address (no keys, no signature), or you just say a NEAR account like you.near. It asks
+what to call the wallet. Any Rhea loan in it shows up right away, and alerts start once you confirm a floor the orb
+proposes. The shield in the menu bar has a **Connections** view: your wallets, the features you can turn on, and how
+each service is doing. Demo accounts are there too, to look around first.
+
 Press **⌘⌥** in any app and a Siri-style orb appears at the top of your screen, over whatever you're doing, with a
 soft glow around the edges. Just talk. When you pause, Nierwall answers out loud and then listens again, so you can
 keep going like a conversation. Talk over it to cut in. Press **Esc** when you're done, or simply stop talking and
@@ -124,7 +131,8 @@ Aurora) or that Nierwall doesn't know yet, it still reads transfers and approval
   before and after. A new key with full access to your NEAR account is flagged critical, as is a transaction whose
   target doesn't match the NEAR action inside it.
 
-It never blocks a transaction. If it can't check one, it says "not checked", never "looks fine".
+It's off until you turn on **Transaction safety** in Connections (or ask the orb), and until then the Snap says its
+checks are off. It never blocks a transaction. If it can't check one, it says "not checked", never "looks fine".
 
 ## How it works
 
@@ -202,6 +210,8 @@ the network where your EVM wallet holds the most USDC and builds "send it to NEA
   doesn't, you get the plain computed answer instead. Plans are replayed on your Mac before you see them.
 - **The AI judges, code enforces.** The AI proposes limits, judges urgency and designs plans. Health math, the
   1.05 hard stop for plans, the always-critical rails and the own-wallets-only rule live in code it can't change.
+- **Addresses stay out of memory.** A NEAR account or 0x address you type or say is replaced with "[address]" before
+  the text goes to the memory service; it remembers wallets by nickname.
 - **Memory can't grant powers.** It stores only your own messages and Nierwall's own events, never text from
   websites or token names. It can shape answers and suggestions, but a new watch always needs your confirmation.
 - **Simulations are labeled.** Simulated price drops say SIMULATED everywhere and are never stored in memory.
@@ -244,7 +254,6 @@ Line Tools.
 
 ```bash
 cp .env.example .env                                 # add your keys (see below)
-cp config/wallets.example.json config/wallets.json   # your addresses and nicknames
 pnpm sign:build                                      # build the review-and-sign page
 pnpm memory:setup                                    # Python environment for the memory service
 
@@ -262,9 +271,9 @@ Every key is optional. Nierwall runs without them, with less:
 | `TELEGRAM_BOT_TOKEN` | Alerts on your phone (create a bot with @BotFather) | Alerts on the Mac only |
 | `COINGECKO_API_KEY` | A higher rate limit for finding coins by name (free demo key) | CoinGecko's public limit, plenty for one person. Prices come from DefiLlama, which needs no key |
 
-In `config/wallets.json`, an EVM wallet is `"chain": "evm"` with its 0x address, and a NEAR wallet is
-`"chain": "near"` with its account name. Addresses only: Nierwall never needs a key. Without the file, Nierwall
-watches the same public demo accounts as `pnpm demo`. There's nothing to sign with those.
+Then connect your wallets from the app: open Connections under the shield, or press ⌘⌥ and ask the orb. Addresses
+only: Nierwall never needs a key. A `config/wallets.json` from an earlier version is imported once. `pnpm demo` uses
+the wallets you connected, or public demo accounts until you have; there's nothing to sign with those.
 
 | Try | How | You should see |
 |-----|-----|----------------|
@@ -274,13 +283,13 @@ watches the same public demo accounts as `pnpm demo`. There's nothing to sign wi
 | Watch any token | "Tell me if SOL drops below $70" | A watch on SOL's price, to confirm |
 | Set a target mix | "Keep at least 20% in stablecoins" | A mix watch, to confirm; the Snap and plans now respect it |
 | Ask for a plan | "Rebalance me toward 30% stablecoins" | Plan cards with health and mix before/after, cost, and **Review & sign** |
-| Send it to Meteor (needs your wallets in `config/wallets.json` and the Meteor extension) | Ask "How do I make my Rhea loan safer?", then say "yes" when the orb asks | Meteor opens with the first step to approve; the orb says when it's done |
+| Send it to your wallet (needs a NEAR wallet you connected, best through Meteor's extension) | Ask "How do I make my Rhea loan safer?", then say "yes" when the orb asks | Meteor opens with the first step to approve; the orb says when it's done |
 | Simulate a crash | `pnpm simulate NEAR -9` (undo with `pnpm simulate off`) | An alert labeled SIMULATED on the Mac and in Telegram, with fixes |
 | Get alerts on your phone | Click "Get alerts on Telegram" in the panel, then tap Start in Telegram | "Linked" in Telegram |
 | Check a transaction | `pnpm snap`, then open `http://127.0.0.1:7420/snap/install` in a browser with MetaMask Flask | Nierwall's panel in MetaMask's confirmation screen |
 | Keep it running | `pnpm always-on` (undo with `sh ops/uninstall-always-on.sh`) | Brain, memory and app start at login and restart if they crash |
 
-Tests: `pnpm test` runs 65 brain tests, 4 of them against mainnet (`OFFLINE=1 pnpm test` skips those), and `apps/mac/scripts/check.sh` checks the voice turn-taking.
+Tests: `pnpm test` runs 70 brain tests, 4 of them against mainnet (`OFFLINE=1 pnpm test` skips those), and `apps/mac/scripts/check.sh` checks the voice turn-taking.
 
 ## Status
 

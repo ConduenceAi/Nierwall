@@ -41,7 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var conversationStartedAt = Date.distantPast
     /// What the orb offered to send ("Should I send it to Meteor?"). Only your next turn can answer it.
     private var offer: Offer?
-    private struct Offer { let id: String; let title: String }
+    private struct Offer { let id: String; let title: String; let wallet: String }
     /// Signing news already told, so each is said once.
     private var told = Set<String>()
     /// Where the overlay's question sits in brain.items; its answer is the next assistant item after it.
@@ -289,7 +289,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func answer(_ text: String, offering: Offer? = nil) {
         guard #available(macOS 26.0, *), let session, !text.isEmpty else { return }
         offer = offering
-        let said = offering == nil ? text : "\(text) Should I send it to Meteor?"
+        let said = offering.map { "\(text) Should I send it to \($0.wallet)?" } ?? text
         overlay.model.phase = .answer
         turns.orbSays(said, at: Date())
         session.beginTurn()
@@ -297,24 +297,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// The first thing in a reply you could send to your wallet: a checked plan, or a fix that isn't hypothetical.
+    /// Only once you've connected a wallet of your own (never with the demo accounts), and named after the app your
+    /// NEAR wallet was connected through, like Meteor.
     private func sendable(_ cards: [Card]) -> Offer? {
+        guard let c = brain.connections, !c.wallets.isEmpty, !c.usingDemo else { return nil }
+        let wallet = c.nearWalletApp ?? "your wallet"
         for card in cards {
             switch card {
-            case .plan(let p) where p.steps.contains(where: { !$0.manual }): return Offer(id: p.planId, title: p.title)
-            case .fix(let f) where !f.fix.notes.contains(where: { $0.contains("hypothetical") }): return Offer(id: f.fix.id, title: f.fix.title)
+            case .plan(let p) where p.steps.contains(where: { !$0.manual }): return Offer(id: p.planId, title: p.title, wallet: wallet)
+            case .fix(let f) where !f.fix.notes.contains(where: { $0.contains("hypothetical") }): return Offer(id: f.fix.id, title: f.fix.title, wallet: wallet)
             default: continue
             }
         }
         return nil
     }
 
-    /// You said yes: the brain opens the checked steps, re-quoting anything that moves money, and the page asks
-    /// Meteor to sign each one as it becomes ready. You approve every step in Meteor; the orb says when it's done.
+    /// You said yes: the brain opens the checked steps, re-quoting anything that moves money, and the page asks your
+    /// wallet (Meteor, when that's how you connected) to sign each one as it becomes ready. You approve every step
+    /// there; the orb says when it's done.
     private func send(_ offer: Offer) {
         overlay.model.phase = .thinking
         Task {
-            if let error = await brain.review(fixId: offer.id, wallet: "meteor-wallet") { return answer("I couldn't open it. \(error)") }
-            answer("Opening Meteor. Approve it there, and I'll tell you when it's done.")
+            if let error = await brain.review(fixId: offer.id, wallet: offer.wallet == "Meteor" ? "meteor-wallet" : nil, auto: true) {
+                return answer("I couldn't open it. \(error)")
+            }
+            answer("Opening \(offer.wallet). Approve it there, and I'll tell you when it's done.")
         }
     }
 

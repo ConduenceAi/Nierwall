@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
-import type { WalletsConfig } from "./config.js";
+import { FIXTURE_WALLETS, type EvmNetwork, type Wallet, type WalletsConfig } from "./config.js";
+import { ConnectLinks, defaultLabel, MAX_WALLETS, nearAccountExists, NO_CONNECTIONS, parseAddress, type Connections } from "./connections.js";
 import { logger } from "./log.js";
 import { DEFAULT_PREFS, fixesFor, type PlannerPrefs } from "./planner/fixes.js";
 import { Portfolio, type SnapshotWithDetail } from "./portfolio.js";
@@ -38,12 +39,85 @@ export class Brain extends EventEmitter {
   private running = false;
   private nearLimit = false;
   private ticking: Promise<TickResult> | null = null;
+  private conn: Connections;
+  /** One-time links to the local page where you connect a wallet; the API serves them on this port. */
+  readonly connectLinks = new ConnectLinks();
+  apiPort = 0;
+  /** When the MetaMask Snap last called in: it's installed and running. */
+  snapSeenAt: number | null = null;
 
-  constructor(readonly store: Store, readonly wallets: WalletsConfig) {
+  constructor(readonly store: Store) {
     super();
-    this.portfolio = new Portfolio(wallets);
+    this.conn = { ...NO_CONNECTIONS, ...(store.kvGet<Connections>("connections") ?? {}) };
+    this.portfolio = new Portfolio(() => this.wallets);
     this.scenario = new Scenario(store);
     this.ensureSystemWatches();
+  }
+
+  // ---- What's connected ----
+
+  get connections(): Connections {
+    return this.conn;
+  }
+
+  /** The wallets Nierwall watches: yours, or the demo accounts while you try it, or none. */
+  get wallets(): WalletsConfig {
+    const { wallets, demo } = this.conn;
+    return { wallets: wallets.length ? wallets : demo ? FIXTURE_WALLETS.wallets : [] };
+  }
+
+  /** True while the public demo accounts stand in for yours: there's nothing to sign with them. */
+  get usingDemo(): boolean {
+    return !this.conn.wallets.length && this.conn.demo;
+  }
+
+  /**
+   * Adds a wallet to watch: a NEAR account (it must exist) or a 0x address, connected through a wallet app or typed.
+   * Read-only: Nierwall only ever has the address.
+   */
+  async addWallet(input: { address: string; label?: string; via?: string; networks?: EvmNetwork[] }): Promise<Wallet> {
+    const parsed = parseAddress(input.address);
+    if ("error" in parsed) throw new Error(parsed.error);
+    const taken = this.conn.wallets.map((w) => w.label);
+    const existing = this.conn.wallets.find((w) => w.chain === parsed.chain && w.address.toLowerCase() === parsed.address.toLowerCase());
+    if (existing) return existing;
+    if (this.conn.wallets.length >= MAX_WALLETS) throw new Error(`Nierwall watches up to ${MAX_WALLETS} wallets. Remove one first.`);
+    if (parsed.chain === "near" && !(await nearAccountExists(parsed.address))) throw new Error(`There's no NEAR account called ${parsed.address}.`);
+    const label = input.label?.trim().slice(0, 40) || defaultLabel(parsed.chain, taken);
+    if (taken.some((t) => t.toLowerCase() === label.toLowerCase())) throw new Error(`You already have a wallet called "${label}". Pick another name.`);
+    const wallet: Wallet = { label, chain: parsed.chain, address: parsed.address, role: "", via: input.via ?? "typed", ...(input.networks ? { networks: input.networks } : {}) };
+    this.conn = { ...this.conn, wallets: [...this.conn.wallets, wallet] };
+    this.store.addEvent("wallet_connected", { label, chain: wallet.chain, via: wallet.via });
+    this.connectionsChanged();
+    return wallet;
+  }
+
+  removeWallet(label: string): boolean {
+    const wallets = this.conn.wallets.filter((w) => w.label.toLowerCase() !== label.toLowerCase());
+    if (wallets.length === this.conn.wallets.length) return false;
+    this.conn = { ...this.conn, wallets };
+    this.store.addEvent("wallet_removed", { label });
+    this.connectionsChanged();
+    return true;
+  }
+
+  /** Turns the demo accounts or transaction safety on or off. */
+  setFeatures(features: { demo?: boolean; transactionSafety?: boolean }): Connections {
+    this.conn = { ...this.conn, ...Object.fromEntries(Object.entries(features).filter(([, v]) => typeof v === "boolean")) };
+    this.connectionsChanged();
+    return this.conn;
+  }
+
+  /** A one-time link to the local page where the user picks Meteor, MetaMask or another wallet to connect. */
+  connectLink(): string {
+    return `http://127.0.0.1:${this.apiPort}/connect/${this.connectLinks.create()}`;
+  }
+
+  private connectionsChanged() {
+    this.store.kvSet("connections", this.conn);
+    this.portfolio.forgetHoldings();
+    this.emit("connections", this.conn);
+    if (this.running) void this.refreshNow().catch((e) => log.warn("refresh after a connection change failed", { err: String(e).slice(0, 120) }));
   }
 
   private ensureSystemWatches() {

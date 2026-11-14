@@ -2,6 +2,7 @@ import { z } from "zod";
 import { allocationOf, checkPlan, PlanInput, type Plan } from "../advisor/plans.js";
 import { dryQuote } from "../advisor/quotes.js";
 import type { Brain } from "../brain.js";
+import { publicConnections } from "../api/connections.js";
 import { networkName } from "../chains.js";
 import { EVM_NETWORKS } from "../config.js";
 import { fixesFor } from "../planner/fixes.js";
@@ -169,6 +170,52 @@ export const TOOL_DEFS = [
       parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"], additionalProperties: false },
     },
   },
+  {
+    type: "function" as const,
+    function: {
+      name: "get_connections",
+      description: "What the user has connected: wallets by nickname (NEAR or EVM, and the wallet app), any Rhea loan found in them, and whether transaction safety and the demo accounts are on. Nierwall starts with nothing connected.",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "connect_wallet",
+      description:
+        "Add a wallet for Nierwall to watch (read-only: only the address, never keys). With a NEAR account the user typed or said (like you.near) or a 0x address they pasted, it's added directly. " +
+        "Without an address, a page opens in the browser where they pick Meteor, MetaMask or another wallet and Nierwall reads the address; tell them to look for it. " +
+        "label is the nickname to call it; ask the user for one (e.g. Savings, Cash) unless they gave it. Never ask for seed phrases or private keys.",
+      parameters: {
+        type: "object",
+        properties: { address: { type: "string", description: "A NEAR account or 0x address, if the user gave one" }, label: { type: "string" } },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "remove_wallet",
+      description: "Stop watching a wallet the user names. Only when they ask.",
+      parameters: { type: "object", properties: { label: { type: "string" } }, required: ["label"], additionalProperties: false },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "set_feature",
+      description:
+        "Turn a feature on or off when the user asks. transaction_safety: Nierwall checks every transaction in MetaMask before they sign it (it also needs the Nierwall Snap installed in MetaMask Flask; the result says how). " +
+        "demo_accounts: public read-only accounts to try Nierwall without connecting a wallet; ignored once a wallet is connected.",
+      parameters: {
+        type: "object",
+        properties: { feature: { type: "string", enum: ["transaction_safety", "demo_accounts"] }, on: { type: "boolean" } },
+        required: ["feature", "on"],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
 
 function summarizePosition(p: LendingPosition, watches: Watch[]) {
@@ -223,6 +270,7 @@ export async function runTool(name: string, args: Record<string, unknown>, ctx: 
   const watches = brain.store.listWatches();
   switch (name) {
     case "get_portfolio": {
+      if (!brain.wallets.wallets.length) return { wallets: [], note: "Nothing is connected yet. Offer to connect a wallet (connect_wallet), or the demo accounts to try it (set_feature)." };
       if (!snap) return { error: "No data yet" };
       for (const p of snap.positions) ctx.cards.push(positionCard(p, watches));
       const { holdings, errors } = await brain.portfolio.holdings(brain.scenario.get());
@@ -362,6 +410,45 @@ export async function runTool(name: string, args: Record<string, unknown>, ctx: 
       brain.store.kvSet(`plan:${result.plan.id}`, result.plan);
       ctx.cards.push(planCard(result.plan));
       return summarizePlan(result.plan);
+    }
+    case "get_connections": {
+      const c = publicConnections(brain);
+      return {
+        wallets: c.wallets.map((w) => ({ wallet: w.label, kind: w.chain === "evm" ? "EVM" : "NEAR", app: w.app, rheaLoan: w.rhea ? { health: w.rhea.healthFactor } : null })),
+        transactionSafety: c.transactionSafety ? "on" : "off",
+        demoAccounts: c.usingDemo ? "on (standing in until a wallet is connected)" : c.demo ? "on, but your wallets are used" : "off",
+        note: c.wallets.length ? undefined : "Nothing is connected yet.",
+      };
+    }
+    case "connect_wallet": {
+      const address = typeof args.address === "string" ? args.address.trim() : "";
+      if (!address) {
+        brain.emit("open", brain.connectLink());
+        return { opened: true, note: "The connect page is open in the browser: pick Meteor, MetaMask or another wallet there. Nierwall reads only the address." };
+      }
+      try {
+        const w = await brain.addWallet({ address, label: typeof args.label === "string" ? args.label : undefined, via: "typed" });
+        await brain.refreshNow();
+        const loan = brain.latestSnapshot()?.positions.find((p) => p.walletLabel === w.label);
+        return { added: w.label, kind: w.chain === "evm" ? "EVM, read on every network NEAR Intents supports" : "NEAR", rheaLoan: loan ? summarizePosition(loan, brain.store.listWatches()) : null };
+      } catch (e) {
+        return { error: String(e instanceof Error ? e.message : e) };
+      }
+    }
+    case "remove_wallet":
+      return brain.removeWallet(String(args.label)) ? { removed: String(args.label) } : { error: "No wallet by that name. Call get_connections." };
+    case "set_feature": {
+      const on = args.on === true;
+      if (args.feature === "transaction_safety") {
+        brain.setFeatures({ transactionSafety: on });
+        if (!on) return { transactionSafety: "off" };
+        if (brain.snapSeenAt) return { transactionSafety: "on", snap: "installed: MetaMask shows Nierwall's check before every transaction" };
+        // Not seen yet: open the install page, which explains the one-time setup.
+        brain.emit("open", `http://127.0.0.1:${brain.apiPort}/snap/install`);
+        return { transactionSafety: "on", snap: "not installed yet", setup: "The install page is open in the browser. It needs MetaMask Flask, and `pnpm snap` running in the Nierwall folder; then press Install. After that MetaMask shows Nierwall's check before every transaction." };
+      }
+      brain.setFeatures({ demo: on });
+      return { demoAccounts: on ? "on" : "off" };
     }
     case "recall_memory": {
       if (!ctx.memory) return { facts: [], note: "Memory service is not running" };

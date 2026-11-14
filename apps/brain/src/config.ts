@@ -54,19 +54,18 @@ export const WalletSchema = z.object({
   role: z.string().default(""),
   /** EVM wallets: the networks to read (default: all of them). Each network's node sees the address it's asked about. */
   networks: z.array(z.enum(EVM_NETWORKS)).min(1).optional(),
+  /** The wallet app it was connected through ("meteor-wallet", "metamask"…), or "typed". */
+  via: z.string().optional(),
 });
 export type Wallet = z.infer<typeof WalletSchema>;
 
-const WalletsFile = z.object({
-  wallets: z.array(WalletSchema),
-  /** Labels of wallets whose Rhea (NEAR) position should be watched. */
-  watchRhea: z.array(z.string()).default([]),
-});
+/** Every NEAR wallet is also checked for a Rhea loan, so there's no separate list of loans to watch. */
+const WalletsFile = z.object({ wallets: z.array(WalletSchema) });
 export type WalletsConfig = z.infer<typeof WalletsFile>;
 
 /**
- * Public on-chain accounts used read-only when no config/wallets.json exists, so the demo and
- * tests run against real positions. They are not the user's wallets and are labeled as such.
+ * Public on-chain accounts, read-only: for `pnpm demo`, the tests, and the app's demo accounts when the user turns
+ * them on to try Nierwall before connecting a wallet. They are not the user's wallets and are labeled as such.
  */
 export const FIXTURE_WALLETS: WalletsConfig = {
   wallets: [
@@ -75,14 +74,12 @@ export const FIXTURE_WALLETS: WalletsConfig = {
     // A public USDC holder on Base, so the demo can show a cross-chain NEAR Intents fix.
     { label: "Demo cash wallet", chain: "evm", address: "0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB", role: "public account, read-only demo fixture" },
   ],
-  watchRhea: ["Demo NEAR wallet"],
 };
 
-export function loadWallets(): { config: WalletsConfig; source: "user" | "fixtures" } {
+/** Wallets from config/wallets.json, the older way to add them; the brain imports them once. Null when there's no file. */
+export function walletsFile(): WalletsConfig | null {
   const path = process.env.GUARDIAN_WALLETS_FILE ? resolve(ROOT, process.env.GUARDIAN_WALLETS_FILE) : resolve(ROOT, "config/wallets.json");
-  if (!existsSync(path)) return { config: FIXTURE_WALLETS, source: "fixtures" };
-  const parsed = WalletsFile.parse(JSON.parse(readFileSync(path, "utf8")));
-  return { config: parsed, source: "user" };
+  return existsSync(path) ? WalletsFile.parse(JSON.parse(readFileSync(path, "utf8"))) : null;
 }
 
 export const ADDRESSES = {

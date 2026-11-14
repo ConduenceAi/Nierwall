@@ -31,7 +31,10 @@ export function registerSnapRoutes(app: Hono, brain: Brain, pendingDeposits: () 
     for (const [k, v] of Object.entries(cors)) c.res.headers.set(k, v);
   });
 
-  app.get("/snap/health", (c) => c.json({ ok: true, lastRefresh: brain.latestSnapshot()?.takenAt ?? null }));
+  app.get("/snap/health", (c) => {
+    brain.snapSeenAt = Date.now();
+    return c.json({ ok: true, lastRefresh: brain.latestSnapshot()?.takenAt ?? null });
+  });
 
   // One-click install of the local Snap into MetaMask Flask (run `pnpm --filter @guardian/snap serve` first).
   app.get("/snap/install", (c) =>
@@ -53,6 +56,11 @@ out.textContent="Installed: "+Object.keys(r).join(", ")+". Make a transaction on
 
   app.post("/snap/analyze", async (c) => {
     const input = Input.parse(await c.req.json());
+    brain.snapSeenAt = Date.now();
+    // Transaction safety is off until the user turns it on in the app.
+    if (!brain.connections.transactionSafety) {
+      return c.json({ status: "unknown", summary: "Nierwall's checks are off", findings: [{ severity: "info", title: "Transaction safety is off", detail: "Turn it on in the Nierwall app (Connections) to check transactions before you sign. Until then this one isn't checked." }] });
+    }
     try {
       const result = await analyzeTx(brain, input, pendingDeposits());
       brain.store.addEvent("presign_check", { status: result.status, summary: result.summary, origin: input.origin ?? null });

@@ -1,5 +1,6 @@
 import { env } from "../config.js";
 import { logger } from "../log.js";
+import { redactAddresses } from "../connections.js";
 import type { Store } from "../store.js";
 
 const log = logger("memory");
@@ -46,7 +47,8 @@ export class MemoryClient {
   async addUserMessage(text: string, channel: string) {
     return this.req("/episodes", {
       method: "POST",
-      body: JSON.stringify({ name: `user message (${channel})`, type: "message", body: `user: ${text}`, source_description: `Nierwall ${channel} chat`, reference_time: new Date().toISOString() }),
+      // Addresses never go to the memory service (or the model it uses): a wallet is remembered by its nickname.
+      body: JSON.stringify({ name: `user message (${channel})`, type: "message", body: `user: ${redactAddresses(text)}`, source_description: `Nierwall ${channel} chat`, reference_time: new Date().toISOString() }),
     });
   }
 

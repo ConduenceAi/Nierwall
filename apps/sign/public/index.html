@@ -31,19 +31,20 @@
     #error { color: var(--bad); margin-top: 12px; font-size: 14px; }
     #done { color: var(--ok); font-weight: 600; margin-top: 12px; }
     footer { margin-top: 18px; }
+    input { font: 15px system-ui; padding: 8px 10px; border: 1px solid var(--rule); border-radius: 9px; background: var(--surface); color: var(--ink); width: 100%; max-width: 320px; margin-top: 8px; }
   </style>
 </head>
 <body>
   <main>
-    <div class="eyebrow">Nierwall · review and sign</div>
+    <div class="eyebrow" id="eyebrow">Nierwall · review and sign</div>
     <h1 id="title">Loading…</h1>
     <div id="health" class="muted"></div>
-    <div class="card"><div class="eyebrow">Checked before you sign</div><ul id="checks"></ul><p id="privacy" hidden></p></div>
+    <div class="card" id="checks-card"><div class="eyebrow">Checked before you sign</div><ul id="checks"></ul><p id="privacy" hidden></p></div>
     <div class="card"><ul id="steps"></ul></div>
     <div id="status" class="muted" role="status"></div>
     <div id="error" role="alert"></div>
     <div id="done" hidden>Done. Nierwall is refreshing your position.</div>
-    <footer class="muted">Nierwall never holds your keys. Each step opens your own wallet for approval. Nothing moves unless you approve it there.</footer>
+    <footer class="muted" id="footer">Nierwall never holds your keys. Each step opens your own wallet for approval. Nothing moves unless you approve it there.</footer>
   </main>
   <script type="module" src="/sign-assets/sign.js"></script>
 </body>

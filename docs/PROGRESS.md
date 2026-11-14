@@ -9,7 +9,7 @@ Last updated: 2026-11-13 (night, IST). Deadline: 2026-11-14 23:59 UTC. Judging 1
 | 3 | Watch engine, scheduler, scenario mode, `pnpm demo`, `pnpm simulate` | Done, live-tested | 6 watch types; incidents open, escalate, remind, resolve, snooze; checks every 20 s near a limit, 60 s otherwise |
 | 4 | Local API + WebSocket, Telegram bot | API done, Telegram untested | Telegram needs `TELEGRAM_BOT_TOKEN`; link it from the app's "Get alerts on Telegram" button |
 | 5 | Memory service (Graphiti on embedded FalkorDB) | Done, live-tested | Extraction, search and the facts list checked with a real OpenAI key; facts are dated and the newest wins. Needs `OPENAI_API_KEY` |
-| 6 | NEAR AI agent | Attestation live-tested, chat waiting on credits | TEE attestation for the gateway and both models verified live with a real key; end-to-end encrypted, 10 tools, number check, seed-phrase tripwire, template fallback. Chat needs NEAR AI Cloud credits |
+| 6 | NEAR AI agent | Done, live-tested | Setup, wallets, floors and planning answered live on NEAR AI, end to end encrypted, with TEE attestation for the gateway and both models; 14 tools, number check with one self-correction, seed-phrase tripwire, template fallback |
 | 7 | Fixes, NEAR Intents quotes, review and signing page | Done, signing untested | Live 1Click quotes with 5 checks; cash for a Rhea fix comes from whichever EVM network holds the most USDC; MetaMask is switched to each step's network. Signing needs your wallets (test with a tiny amount); blocked on demo accounts |
 | 8 | MetaMask Snap (pre-sign checks) | Built, untested in MetaMask | Analysis tested with real calldata; needs MetaMask Flask in your browser |
 | 9 | Mac menu-bar app (Swift) | Built, launched | Press ⌘⌥ for the Siri-style orb (top center, no background, edge glow): a hands-free conversation where a pause sends, it answers and listens again, you can talk over it, and Esc or silence ends it. Turn-taking checked offline (`apps/mac/scripts/check.sh`); voice, echo cancellation, overlay and notifications still need you at the screen |
@@ -31,6 +31,18 @@ Last updated: 2026-11-13 (night, IST). Deadline: 2026-11-14 23:59 UTC. Judging 1
 
 ## Log
 
+- **2026-11-14 (afternoon)** Nierwall starts empty, and the orb sets it up. No built-in wallets: you connect a wallet
+  on a local page (Meteor, MetaMask or another; only the address is read) or by saying a NEAR account, and every
+  NEAR wallet is checked for a Rhea loan. Demo accounts and transaction safety are off until turned on; the Snap says
+  its checks are off until then. The panel has a Connections view. The orb offers to send a fix to your wallet only
+  once you've connected one, and names Meteor when that's how you connected. Addresses are removed from chat text
+  before it reaches memory.
+  Tested live with NEAR AI credits: setup, connecting by voice, a proposed floor and a planning question all answered
+  on NEAR AI, encrypted end to end. Found and fixed three things on the way: NEAR AI's encrypted path fails on any
+  tool result that is a JSON array ("Upstream request failed", even `[1,2]`), so results are always objects now;
+  the chat model spent ~25 s on hidden reasoning per answer, so everyday answers use low reasoning effort (4 s) while
+  planning keeps it; and a reply with a number no tool gave now gets one chance to correct itself instead of turning
+  into a template answer. 70 tests pass.
 - **2026-11-14 (noon)** NEAR AI checked live with a real key: the gateway's and `z-ai/glm-5.3-flash`'s TEE attestation
   verify (about 15 s), and chat answers wait on credits (402 until a spending limit is set). The planning model
   `z-ai/glm-5.3` is now a third-party model without model attestation, so the default planner is

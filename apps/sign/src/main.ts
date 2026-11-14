@@ -181,5 +181,71 @@ async function refresh() {
   }
 }
 
-void refresh();
-setInterval(refresh, 4000);
+// ---- Connect a wallet: the page reads only an address and sends it to Nierwall ----
+
+async function addWallet(address: string, via: string) {
+  const label = ($("nickname") as HTMLInputElement).value.trim() || undefined;
+  const res = await fetch(`${location.pathname}/wallet`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ address, via, label }) });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j.error ?? res.statusText);
+  ($("nickname") as HTMLInputElement).value = "";
+  $("done").textContent = `Connected "${j.wallet}". Nierwall is reading it now. Connect another, or close this page.`;
+  $("done").hidden = false;
+}
+
+function connectPage() {
+  document.title = "Nierwall · Connect a wallet";
+  $("eyebrow").textContent = "Nierwall · connect a wallet";
+  $("title").textContent = "Connect a wallet";
+  $("health").textContent = "Nierwall reads only the address, to watch your balances and loans. It can't sign or move anything.";
+  $("checks-card").hidden = true;
+  $("footer").textContent = "No keys, no signature: your wallet only shares its address. You can remove a wallet any time in Nierwall's Connections.";
+  $("steps").innerHTML = `
+    <li class="step"><div class="n">1</div><div class="body"><div class="t">Name it <span class="state">optional</span></div>
+      <input id="nickname" maxlength="40" placeholder="e.g. Savings or Cash"></div></li>
+    <li class="step"><div class="n">2</div><div class="body"><div class="t">Connect</div>
+      <button id="near">NEAR wallet: Meteor and others</button> <button id="evm">MetaMask (EVM)</button>
+      <div class="d" style="margin-top:12px">Or type a NEAR account, or paste a 0x address</div>
+      <input id="typed" placeholder="you.near or 0x…"> <button id="add">Add</button></div></li>`;
+  const run = (b: HTMLButtonElement, f: () => Promise<void>) =>
+    b.addEventListener("click", async () => {
+      b.disabled = true;
+      $("error").textContent = "";
+      $("done").hidden = true;
+      try {
+        await f();
+      } catch (e: any) {
+        $("error").textContent = e?.message ?? String(e);
+      } finally {
+        b.disabled = false;
+      }
+    });
+  run($("near") as HTMLButtonElement, async () => {
+    connector ??= new NearConnector({ network: "mainnet" } as any);
+    const wallet = await connector.connect();
+    const account = (await wallet.getAccounts())[0]?.accountId;
+    if (!account) throw new Error("The wallet didn't share an account.");
+    await addWallet(account, wallet.manifest.id);
+  });
+  run($("evm") as HTMLButtonElement, async () => {
+    const provider = pickEvmProvider();
+    if (!provider) throw new Error("No browser wallet found. Install MetaMask in this browser, or paste the address below.");
+    const [account] = (await provider.request({ method: "eth_requestAccounts" })) as string[];
+    if (!account) throw new Error("MetaMask didn't share an account.");
+    const mm = providers.find((p) => p.provider === provider)?.info.rdns ?? "";
+    await addWallet(account, mm.startsWith("io.metamask") || !mm ? "metamask" : mm);
+  });
+  run($("add") as HTMLButtonElement, async () => {
+    const typed = ($("typed") as HTMLInputElement).value.trim();
+    if (!typed) throw new Error("Type a NEAR account or paste an address first.");
+    await addWallet(typed, "typed");
+    ($("typed") as HTMLInputElement).value = "";
+  });
+}
+
+if (location.pathname.startsWith("/connect/")) {
+  connectPage();
+} else {
+  void refresh();
+  setInterval(refresh, 4000);
+}

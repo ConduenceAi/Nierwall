@@ -12,7 +12,8 @@ import { networkName } from "../chains.js";
 import { rheaAssets, rheaTokenBySymbol } from "../protocols/rhea.js";
 import { coinPrices, type CoinPrice } from "../sources/coins.js";
 import { tokenList } from "../tokens.js";
-import { DATA_DIR, loadWallets } from "../config.js";
+import { DATA_DIR, FIXTURE_WALLETS } from "../config.js";
+import { NO_CONNECTIONS, type Connections } from "../connections.js";
 import { Brain } from "../brain.js";
 import { Store } from "../store.js";
 import type { Alert, LendingPosition, Snapshot } from "../types.js";
@@ -67,14 +68,17 @@ async function main() {
   const calmOnly = process.argv.includes("--calm");
   const dbPath = resolve(DATA_DIR, "demo.sqlite");
   for (const suffix of ["", "-wal", "-shm"]) rmSync(dbPath + suffix, { force: true });
+  // The wallets you connected in the app, or the public demo accounts if you haven't connected any.
+  const yours = new Store().kvGet<Connections>("connections")?.wallets ?? [];
+  const config = { wallets: yours.length ? yours : FIXTURE_WALLETS.wallets };
   const store = new Store(dbPath);
-  const { config, source } = loadWallets();
-  const brain = new Brain(store, config);
+  store.kvSet("connections", { ...NO_CONNECTIONS, wallets: config.wallets });
+  const brain = new Brain(store);
 
   console.log(c.bold("\nNierwall · terminal demo"));
-  console.log(c.dim(source === "fixtures"
-    ? "  Using public read-only fixture accounts (add config/wallets.json to watch your own)."
-    : "  Using your wallets from config/wallets.json."));
+  console.log(c.dim(yours.length
+    ? `  Using the wallets you connected: ${yours.map((w) => w.label).join(", ")}.`
+    : "  Using public read-only demo accounts (connect your own wallets in the app to see yours here)."));
 
   console.log(c.bold("\n1. Live snapshot"));
   const first = await brain.tick();
@@ -119,7 +123,7 @@ async function main() {
   const { holdings } = await brain.portfolio.holdings(null);
   const alloc = allocationOf(holdings, after.data.snapshot.positions);
   console.log(`  Net worth ${money(alloc.netWorthUsd)}: ${alloc.classes.map((x) => `${x.cls} ${x.pct}%`).join(" · ")} ${c.dim("(loans netted)")}`);
-  if (source === "fixtures") {
+  if (!yours.length) {
     const [tokens, assets] = await Promise.all([tokenList(), rheaAssets()]);
     const check = await checkPlan(
       {

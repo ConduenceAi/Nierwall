@@ -13,6 +13,14 @@ export function fallbackReply(brain: Brain, text: string): Reply {
   const snap = brain.latestSnapshot();
   const watches = brain.store.listWatches("active");
   const q = text.toLowerCase();
+  if (!brain.wallets.wallets.length) {
+    return {
+      text: "Nothing is connected yet. Open Connections in the Nierwall panel to connect a wallet (Meteor, MetaMask or another; Nierwall reads only the address), or turn on the demo accounts to look around.",
+      speak: "Nothing is connected yet. Open Connections in the Nierwall panel to connect a wallet, or try the demo accounts.",
+      cards: [],
+      via: "fallback",
+    };
+  }
   if (!snap) return { text: "I haven't finished my first check yet. Try again in a few seconds.", speak: "Still loading. Try again in a moment.", cards: [], via: "fallback" };
 
   const sim = scenarioLabel(snap.scenario);

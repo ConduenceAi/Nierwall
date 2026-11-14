@@ -18,6 +18,27 @@ struct BrainStatus: Decodable, Equatable {
     let state: String // loading | ok | attention | degraded
 }
 
+/// What's connected: your wallets (with any Rhea loan found) and what's turned on. Everything starts empty and off.
+struct Connections: Decodable, Equatable {
+    struct Wallet: Decodable, Equatable, Identifiable {
+        struct Loan: Decodable, Equatable { let healthFactor: Double?; let collateralUsd: Double; let debtUsd: Double }
+        let label: String
+        let chain: String
+        let address: String
+        let app: String?
+        let rhea: Loan?
+        var id: String { label }
+    }
+    let wallets: [Wallet]
+    let demo: Bool
+    let usingDemo: Bool
+    let transactionSafety: Bool
+
+    /// The app your NEAR wallet was connected through, if any ("Meteor"): where the orb sends things to sign.
+    var nearWalletApp: String? { wallets.first { $0.chain == "near" && $0.app != nil }?.app }
+    var hasNearWallet: Bool { wallets.contains { $0.chain == "near" } }
+}
+
 struct PositionCard: Decodable, Equatable, Identifiable {
     var id: String { positionId }
     let positionId: String
