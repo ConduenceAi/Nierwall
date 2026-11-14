@@ -91,6 +91,20 @@ export class NearAgent implements Assistant {
   }
 
   /** The model's call on how serious an alert is. Numbers in, {severity, reason} out: no tools, no outside text. */
+  /** One model call with the tools: the planning model with its full reasoning, or the everyday model, quick. */
+  private complete(messages: Msg[], planning: boolean) {
+    return this.client.chat.completions.create({
+      model: planning ? this.plannerModel : this.model,
+      messages: messages as any,
+      tools: TOOL_DEFS as any,
+      tool_choice: "auto",
+      temperature: 0.2,
+      max_tokens: planning ? 1500 : 700,
+      // Everyday answers are spoken: little hidden reasoning keeps them to seconds (25 s → 4 s measured).
+      ...(planning ? {} : { reasoning_effort: "low" }),
+    } as any);
+  }
+
   async judgeSeverity(facts: Record<string, unknown>): Promise<SeverityJudgment | null> {
     if (!this.att.verified) return null;
     const completion: any = await this.client.chat.completions.create({
@@ -98,6 +112,8 @@ export class NearAgent implements Assistant {
       messages: [{ role: "system", content: JUDGE }, { role: "user", content: JSON.stringify(facts) }] as any,
       temperature: 0,
       max_tokens: 160,
+      // It has 10 seconds and 160 tokens: hidden reasoning alone would use both.
+      reasoning_effort: "low",
     });
     const raw = String(completion.choices?.[0]?.message?.content ?? "").match(/\{[\s\S]*\}/)?.[0];
     if (!raw) return null;
@@ -133,18 +149,19 @@ export class NearAgent implements Assistant {
     ];
     collectNumbers(memoryFacts, grounding);
 
-    const planning = this.plannerVerified && PLANNING.test(text);
+    let planning = this.plannerVerified && PLANNING.test(text);
     try {
       let final = "";
       let completionId: string | null = null;
+      let corrected = false;
       for (let step = 0; step < (planning ? 10 : 6); step++) {
-        const completion: any = await this.client.chat.completions.create({
-          model: planning ? this.plannerModel : this.model,
-          messages: messages as any,
-          tools: TOOL_DEFS as any,
-          tool_choice: "auto",
-          temperature: 0.2,
-          max_tokens: planning ? 1500 : 700,
+        const completion: any = await this.complete(messages, planning).catch((e) => {
+          log.warn("model call failed", { step, planning, shape: shapeOf(messages), err: String(e).slice(0, 160) });
+          if (!planning) throw e;
+          // The planning model failed upstream: carry on with the everyday model rather than give up.
+          log.warn("planner call failed; continuing on the chat model", { err: String(e).slice(0, 160) });
+          planning = false;
+          return this.complete(messages, false);
         });
         completionId = completion.id ?? completionId;
         const msg = completion.choices?.[0]?.message;
@@ -160,11 +177,26 @@ export class NearAgent implements Assistant {
             }
             const result = await runTool(call.function?.name, args, ctx).catch((e) => ({ error: String(e).slice(0, 200) }));
             collectNumbers(result, grounding);
-            messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result).slice(0, 8000) });
+            // What the model chose and a tool accepted (a proposed floor, a plan's amounts) may be repeated back.
+            if (!(result && typeof result === "object" && "error" in result)) collectNumbers(args, grounding);
+            // Always an object: with end-to-end encryption, NEAR AI fails ("Upstream request failed") on a tool
+            // result that is a JSON array, even [1,2]. Found live on 2026-11-14.
+            const body = result && typeof result === "object" && !Array.isArray(result) ? result : { results: result };
+            messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(body).slice(0, 8000) });
           }
           continue;
         }
-        final = String(msg.content ?? "").trim();
+        const answer = String(msg.content ?? "").trim();
+        const unsure = ungroundedNumbers(answer, grounding);
+        if (unsure.length && !corrected) {
+          // Once: ask again, with only figures a tool produced (or after calling the tool that works them out).
+          corrected = true;
+          log.info("reply had numbers no tool gave; asking for a corrected answer", { numbers: unsure.slice(0, 5) });
+          messages.push({ role: "assistant", content: answer });
+          messages.push({ role: "user", content: `These numbers in your answer didn't come from a tool result: ${unsure.slice(0, 5).join(", ")}. Answer again using only numbers from tool results, or first call the tool that works them out (for a loan floor: asset_volatility, then propose_watch).` });
+          continue;
+        }
+        final = answer;
         break;
       }
       if (!final) throw new Error("model returned no answer");
@@ -185,13 +217,31 @@ export class NearAgent implements Assistant {
       }
       const turn: Msg[] = [{ role: "user", content: text }, { role: "assistant", content: final }];
       this.history.set(channel, [...prior, ...turn].slice(-8));
-      const speak = (final.match(/^[^.!?]+[.!?]/)?.[0] ?? final).slice(0, 220);
+      const speak = spokenPart(final);
       return { text: final, speak, cards: dedupeCards(ctx.cards), via: "near-ai" };
     } catch (e) {
       log.warn("NEAR AI call failed; using fallback", { err: String(e).slice(0, 200) });
       return fallbackReply(this.brain, text);
     }
   }
+}
+
+/** A request's shape for the log when the model fails: roles, sizes and tool names, never content. */
+function shapeOf(messages: Msg[]): string {
+  return messages
+    .map((m) => `${m.role}${m.tool_calls ? `[${m.tool_calls.map((c: any) => c.function?.name).join("+")}]` : ""}:${m.content == null ? "null" : String(m.content).length}`)
+    .join(" ");
+}
+
+/** What the orb says out loud: whole sentences from the start, up to about 600 characters (the panel shows the rest). */
+function spokenPart(text: string): string {
+  const sentences = text.replace(/[*_`#]/g, "").replace(/\s+/g, " ").match(/[^.!?]+(?:[.!?]+|$)/g) ?? [text];
+  let out = "";
+  for (const sentence of sentences) {
+    if (out && (out + sentence).length > 600) break;
+    out += sentence;
+  }
+  return out.trim() || text.slice(0, 600);
 }
 
 /** Memory facts, newest first, so a limit the user changed shows its latest value first. */
