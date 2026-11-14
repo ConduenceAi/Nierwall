@@ -2,7 +2,8 @@ import type { Wallet, WalletsConfig } from "./config.js";
 import { allocationOf } from "./advisor/plans.js";
 import { readHoldings, type Holding } from "./holdings.js";
 import { logger } from "./log.js";
-import { readRhea, type RheaAccountDetail } from "./protocols/rhea.js";
+import { DEMO_RHEA, isDemoWallet } from "./demo.js";
+import { fixedRhea, readRhea, type RheaAccountDetail } from "./protocols/rhea.js";
 import { coinPrices } from "./sources/coins.js";
 import { fetchPrices } from "./sources/prices.js";
 import type { ScenarioState, Snapshot, WalletBalance } from "./types.js";
@@ -11,7 +12,7 @@ const log = logger("portfolio");
 
 export interface SnapshotWithDetail {
   snapshot: Snapshot;
-  /** Protocol detail kept in memory for previews and the Snap; never persisted with addresses. */
+  /** Protocol detail kept in memory for fix previews; never persisted with addresses. */
   rhea: Map<string, RheaAccountDetail>;
 }
 
@@ -61,8 +62,10 @@ export class Portfolio {
     }
     // Every NEAR wallet is checked for a Rhea loan; one with nothing on Rhea simply has no position.
     for (const w of this.wallets.wallets.filter((x) => x.chain === "near")) {
+      const loan = isDemoWallet(w) ? (w.label === DEMO_RHEA.wallet ? fixedRhea(w.label, DEMO_RHEA, scenario) : null) : readRhea(w.label, w.address, scenario);
+      if (!loan) continue;
       jobs.push(
-        readRhea(w.label, w.address, scenario)
+        loan
           .then((d) => void (d.position.collateral.length || d.position.debt.length ? rhea.set(w.label, d) : undefined))
           .catch((e) => void errors.push(`rhea:${w.label}: ${String(e).slice(0, 120)}`)),
       );

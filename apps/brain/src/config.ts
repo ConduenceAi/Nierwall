@@ -20,6 +20,8 @@ const Env = z.object({
   TELEGRAM_BOT_TOKEN: z.string().default(""),
   TELEGRAM_DETAIL: z.enum(["generic", "actionable", "detailed"]).default("actionable"),
   NEAR_RPC_URL: z.string().url().default("https://free.rpc.fastnear.com"),
+  /** Optional: your own Solana node, tried before the public ones. */
+  SOLANA_RPC_URL: z.union([z.literal(""), z.string().url()]).default(""),
   /** Optional: your own Base node, tried before the built-in ones. Other networks: RPC_URL_<chain id>. */
   BASE_RPC_URL: z.union([z.literal(""), z.string().url()]).default(""),
   SCENARIO_MODE: z.string().default("1"),
@@ -37,14 +39,14 @@ mkdirSync(DATA_DIR, { recursive: true });
 /** The EVM networks NEAR Intents can move money on, by their NEAR Intents names. */
 export const EVM_NETWORKS = ["eth", "base", "arb", "op", "pol", "bsc", "gnosis", "avax", "bera", "scroll"] as const;
 export type EvmNetwork = (typeof EVM_NETWORKS)[number];
-/** Where a token lives: NEAR, or one of the EVM networks. */
-export type Network = EvmNetwork | "near";
+/** Where a token lives: NEAR, one of the EVM networks, or Solana ("sol", its NEAR Intents name). */
+export type Network = EvmNetwork | "near" | "sol";
 
 /**
- * What kind of wallet: one NEAR account, or one EVM address, which is the same on every EVM network.
+ * What kind of wallet: one NEAR account, one EVM address (the same on every EVM network), or one Solana address.
  * "base" is the old name for "evm" and still works in wallets.json.
  */
-export const Chain = z.enum(["evm", "near", "base"]).transform((c): "evm" | "near" => (c === "base" ? "evm" : c));
+export const Chain = z.enum(["evm", "near", "solana", "base"]).transform((c): "evm" | "near" | "solana" => (c === "base" ? "evm" : c));
 export type Chain = z.output<typeof Chain>;
 
 export const WalletSchema = z.object({
@@ -54,7 +56,7 @@ export const WalletSchema = z.object({
   role: z.string().default(""),
   /** EVM wallets: the networks to read (default: all of them). Each network's node sees the address it's asked about. */
   networks: z.array(z.enum(EVM_NETWORKS)).min(1).optional(),
-  /** The wallet app it was connected through ("meteor-wallet", "metamask"…), or "typed". */
+  /** The wallet app it was connected through ("meteor-wallet", "metamask"), "typed", or "demo" for the demo portfolio. */
   via: z.string().optional(),
 });
 export type Wallet = z.infer<typeof WalletSchema>;
@@ -62,19 +64,6 @@ export type Wallet = z.infer<typeof WalletSchema>;
 /** Every NEAR wallet is also checked for a Rhea loan, so there's no separate list of loans to watch. */
 const WalletsFile = z.object({ wallets: z.array(WalletSchema) });
 export type WalletsConfig = z.infer<typeof WalletsFile>;
-
-/**
- * Public on-chain accounts, read-only: for `pnpm demo`, the tests, and the app's demo accounts when the user turns
- * them on to try Nierwall before connecting a wallet. They are not the user's wallets and are labeled as such.
- */
-export const FIXTURE_WALLETS: WalletsConfig = {
-  wallets: [
-    { label: "Demo EVM wallet", chain: "evm", address: "0xABBEa473fdDE4409C6A1F0c7C527C1bDa68E6C24", role: "public account, read-only demo fixture" },
-    { label: "Demo NEAR wallet", chain: "near", address: "luckyjacket2695.near", role: "public account, read-only demo fixture" },
-    // A public USDC holder on Base, so the demo can show a cross-chain NEAR Intents fix.
-    { label: "Demo cash wallet", chain: "evm", address: "0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB", role: "public account, read-only demo fixture" },
-  ],
-};
 
 /** Wallets from config/wallets.json, the older way to add them; the brain imports them once. Null when there's no file. */
 export function walletsFile(): WalletsConfig | null {

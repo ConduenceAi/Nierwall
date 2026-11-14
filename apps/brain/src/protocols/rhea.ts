@@ -56,6 +56,22 @@ export interface RheaAccountDetail {
 /** Reads the REGULAR Rhea lending position of a NEAR account. */
 export async function readRhea(walletLabel: string, accountId: string, scenario: ScenarioState | null): Promise<RheaAccountDetail> {
   const [assets, portfolio] = await Promise.all([rheaAssets(), rhea.getAccountAllPositionsView(accountId) as Promise<RheaPortfolio | undefined>]);
+  return rheaDetail(walletLabel, assets, portfolio, scenario);
+}
+
+/**
+ * A Rhea loan from fixed token amounts (by Rhea token id), with Rhea's live prices and weights: the demo portfolio's
+ * loan, valued exactly like a real one.
+ */
+export async function fixedRhea(walletLabel: string, loan: { collateral: Record<string, number>; borrowed: Record<string, number> }, scenario: ScenarioState | null, assets?: RheaAssets): Promise<RheaAccountDetail> {
+  assets ??= await rheaAssets();
+  const raw = (amounts: Record<string, number>) =>
+    Object.fromEntries(Object.entries(amounts).map(([id, amount]) => [id, { balance: (BigInt(Math.round(amount * 1e6)) * 10n ** BigInt(tokenInfo(assets, id).decimals - 6)).toString() }]));
+  return rheaDetail(walletLabel, assets, { positions: { REGULAR: { collateral: raw(loan.collateral), borrowed: raw(loan.borrowed) } } }, scenario);
+}
+
+/** A position, its health and how far it is from liquidation, from Rhea's raw balances. */
+function rheaDetail(walletLabel: string, assets: RheaAssets, portfolio: RheaPortfolio | undefined, scenario: ScenarioState | null): RheaAccountDetail {
   const regular = portfolio?.positions?.REGULAR;
   const tokens: RheaAccountDetail["tokens"] = {};
   const collateral: TokenAmount[] = [];

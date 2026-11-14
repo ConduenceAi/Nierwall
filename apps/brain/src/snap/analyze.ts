@@ -66,7 +66,9 @@ export async function analyzeTx(brain: Brain, input: SnapTxInput, pending: Pendi
   const data = (tx.data ?? "0x") as `0x${string}`;
   const ownWallets = brain.wallets.wallets.filter((w) => w.chain === "evm");
   const own = (addr: string) => ownWallets.find((w) => w.address.toLowerCase() === addr.toLowerCase());
-  const fromLabel = from ? own(from)?.label ?? null : null;
+  // In the demo, whichever account MetaMask sends from stands in for the demo's EVM wallet, so the demo's rules apply.
+  const demoEvm = brain.usingDemo ? ownWallets[0]?.label ?? null : null;
+  const fromLabel = from ? own(from)?.label ?? demoEvm : null;
 
   // ---- ERC-20 approve / transfer ----
   let what = "Contract call";
@@ -130,10 +132,11 @@ export async function analyzeTx(brain: Brain, input: SnapTxInput, pending: Pendi
   let changes: NonNullable<SnapAnalysis["changes"]> = [network];
   let simulated = false;
   if (from && evm?.simulate) {
-    const effects = await txEffects(brain, evm, { from, to, data, value: tx.value }, what === "Contract call").catch(() => null);
+    const effects = await txEffects(brain, evm, { from, to, data, value: tx.value }, what === "Contract call", fromLabel).catch(() => null);
     if (effects) {
       simulated = true;
-      findings.push(...effects.findings);
+      // A plain USDC transfer was already checked against the reserve above; don't say it twice.
+      for (const f of effects.findings) if (!findings.some((x) => x.title === f.title)) findings.push(f);
       changes = [network, ...effects.rows];
     }
   }

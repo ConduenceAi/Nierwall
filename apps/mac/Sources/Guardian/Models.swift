@@ -18,25 +18,43 @@ struct BrainStatus: Decodable, Equatable {
     let state: String // loading | ok | attention | degraded
 }
 
-/// What's connected: your wallets (with any Rhea loan found) and what's turned on. Everything starts empty and off.
+/// Your wallets (with any Rhea loan found) and whether the demo accounts are on. Everything starts empty and off.
+/// A wallet added by address is only read; one connected through its wallet app can also be sent transactions.
 struct Connections: Decodable, Equatable {
     struct Wallet: Decodable, Equatable, Identifiable {
         struct Loan: Decodable, Equatable { let healthFactor: Double?; let collateralUsd: Double; let debtUsd: Double }
         let label: String
         let chain: String
         let address: String
+        /// The wallet app it was connected with ("Meteor", "MetaMask"); nil when it was added by address.
         let app: String?
+        let connected: Bool
+        /// One of the demo portfolio's wallets: fixed amounts, nothing to remove or connect.
+        let demo: Bool?
         let rhea: Loan?
         var id: String { label }
+        var isDemo: Bool { demo ?? false }
     }
     let wallets: [Wallet]
     let demo: Bool
     let usingDemo: Bool
     let transactionSafety: Bool
 
-    /// The app your NEAR wallet was connected through, if any ("Meteor"): where the orb sends things to sign.
-    var nearWalletApp: String? { wallets.first { $0.chain == "near" && $0.app != nil }?.app }
-    var hasNearWallet: Bool { wallets.contains { $0.chain == "near" } }
+    /// The first of these wallets that's only read, so nothing can be sent through it; nil when all are connected.
+    func readOnly(among labels: [String]) -> String? {
+        labels.first { label in !(wallets.first { $0.label == label }?.connected ?? false) }
+    }
+
+    /// The wallet apps that would sign for these wallets ("Meteor", "Meteor and MetaMask"), or nil if any is only read.
+    func apps(signing labels: [String]) -> String? {
+        guard !labels.isEmpty, readOnly(among: labels) == nil else { return nil }
+        var names: [String] = []
+        for label in labels {
+            let app = wallets.first { $0.label == label }?.app ?? "your wallet"
+            if !names.contains(app) { names.append(app) }
+        }
+        return ListFormatter.localizedString(byJoining: names)
+    }
 }
 
 struct PositionCard: Decodable, Equatable, Identifiable {

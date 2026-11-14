@@ -1,8 +1,9 @@
 import { NearConnector } from "@hot-labs/near-connect";
 
 /**
- * Nierwall signing page. Runs on 127.0.0.1, opened from the Mac app. It never sees keys: MetaMask signs EVM steps
- * (on whichever network each step names) through EIP-6963, and the user's NEAR wallet signs NEAR steps through NEAR Connect.
+ * Nierwall's review and connect page. Runs on 127.0.0.1, opened from the Mac app. It never sees keys. Each step goes to
+ * the wallet app its wallet was connected with: a NEAR wallet (Meteor or another) through NEAR Connect, or MetaMask for
+ * EVM steps (on whichever network the step names) through EIP-6963.
  */
 
 interface Step {
@@ -14,6 +15,9 @@ interface Step {
   chain: string | null;
   wallet: string | null;
   expectedSigner: string | null;
+  /** The wallet app the signer was connected with ("meteor-wallet", "metamask"), and its name for people. */
+  walletApp?: string;
+  walletAppName?: string;
   evmTx?: {
     chainId: number;
     to: string;
@@ -40,25 +44,27 @@ interface Eip1193 {
 }
 
 const token = location.pathname.split("/").filter(Boolean)[1] ?? "";
-// Opened by the orb after you said yes: go straight to that wallet (Meteor) and ask it to sign each step as it becomes
-// ready, once. You still approve every step in the wallet.
-const params = new URLSearchParams(location.search);
-const walletId = params.get("wallet");
-const auto = params.get("auto") === "1";
+// Opened by the orb after you said yes: ask each step's wallet to sign it as soon as it's ready, once. You still approve
+// every step in the wallet.
+const auto = new URLSearchParams(location.search).get("auto") === "1";
 const asked = new Set<string>();
 /** Steps waiting on a wallet right now. */
 const inFlight = new Set<string>();
 const $ = (id: string) => document.getElementById(id)!;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
-// ---- EIP-6963 wallet discovery (prefers MetaMask / MetaMask Flask) ----
+// ---- EIP-6963 wallet discovery: the EVM wallet a step's wallet was connected with, MetaMask first ----
 const providers: Array<{ info: { rdns: string; name: string }; provider: Eip1193 }> = [];
 window.addEventListener("eip6963:announceProvider", (e: any) => providers.push(e.detail));
 window.dispatchEvent(new Event("eip6963:requestProvider"));
 
-function pickEvmProvider(): Eip1193 | null {
+/** The browser wallet for an EVM wallet connected as `app` ("metamask", or another wallet's rdns). */
+function pickEvmProvider(app?: string): { provider: Eip1193; rdns: string } | null {
   const mm = providers.find((p) => p.info.rdns.startsWith("io.metamask"));
-  return (mm ?? providers[0])?.provider ?? (window as any).ethereum ?? null;
+  const chosen = (app && app !== "metamask" ? providers.find((p) => p.info.rdns === app) : undefined) ?? mm ?? providers[0];
+  if (chosen) return { provider: chosen.provider, rdns: chosen.info.rdns };
+  const injected = (window as any).ethereum as Eip1193 | undefined;
+  return injected ? { provider: injected, rdns: "" } : null;
 }
 
 async function api(path: string, body?: unknown) {
@@ -67,19 +73,23 @@ async function api(path: string, body?: unknown) {
   return res.json();
 }
 
+/** The wallet app a step opens, for people. */
+const appName = (step: Step) => step.walletAppName ?? (step.kind === "evm" ? "MetaMask" : "your NEAR wallet");
+
 async function sendEvm(step: Step) {
-  const provider = pickEvmProvider();
-  if (!provider) throw new Error("No browser wallet found. Install MetaMask (or MetaMask Flask) in this browser.");
+  const found = pickEvmProvider(step.walletApp);
+  if (!found) throw new Error("No browser wallet found. Install MetaMask in this browser.");
+  const { provider } = found;
   const [account] = (await provider.request({ method: "eth_requestAccounts" })) as string[];
   if (!account || account.toLowerCase() !== step.expectedSigner!.toLowerCase()) {
-    throw new Error(`Switch MetaMask to your "${step.wallet}" account (${step.expectedSigner}).`);
+    throw new Error(`Switch ${appName(step)} to your "${step.wallet}" account (${step.expectedSigner}).`);
   }
   const tx = step.evmTx!;
   const chainHex = `0x${tx.chainId.toString(16)}`;
   try {
     await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: chainHex }] });
   } catch (e: any) {
-    // MetaMask doesn't know this network yet: offer to add it.
+    // The wallet doesn't know this network yet: offer to add it.
     if (e?.code === 4902) {
       await provider.request({
         method: "wallet_addEthereumChain",
@@ -98,10 +108,18 @@ async function sendEvm(step: Step) {
   await api(`/steps/${step.id}`, { txHash: hash });
 }
 
+// The nonce this page was served with. NEAR Connect puts it on each wallet's sandboxed scripts, so the page's security
+// policy lets the wallet's code run.
+const cspNonce = document.querySelector<HTMLScriptElement>("script[nonce]")?.nonce || undefined;
 let connector: NearConnector | null = null;
+// Every NEAR wallet NEAR Connect lists, except its "Ethereum Wallets" entry: EVM wallets connect through MetaMask here.
+const near = () => (connector ??= new NearConnector({ network: "mainnet", cspNonce, excludedWallets: ["ethereum-wallets"], features: { signAndSendTransaction: true } }));
+
 async function sendNear(step: Step) {
-  connector ??= new NearConnector({ network: "mainnet" } as any);
-  const wallet = await connector.connect(walletId ? { walletId } : undefined);
+  // Straight to the wallet app the account was connected with; the full list if NEAR Connect doesn't know it.
+  const wallet = await near()
+    .connect(step.walletApp ? { walletId: step.walletApp } : undefined)
+    .catch((e) => (String(e).includes("Wallet not found") ? near().connect() : Promise.reject(e)));
   const accounts = await wallet.getAccounts();
   const accountId = accounts[0]?.accountId;
   if (accountId !== step.expectedSigner) {
@@ -126,8 +144,8 @@ function render(s: Session) {
   $("steps").innerHTML = s.steps
     .map((st, i) => {
       const action =
-        st.state === "ready" && st.kind === "evm" ? `<button data-step="${st.id}">Sign with MetaMask on ${esc(st.evmTx?.network.name ?? "EVM")}</button>` :
-        st.state === "ready" && st.kind === "near" && st.nearTx ? `<button data-step="${st.id}">Sign with ${walletId === "meteor-wallet" ? "Meteor" : "your NEAR wallet"}</button>` :
+        st.state === "ready" && st.kind === "evm" ? `<button data-step="${st.id}">Sign with ${esc(appName(st))} on ${esc(st.evmTx?.network.name ?? "EVM")}</button>` :
+        st.state === "ready" && st.kind === "near" && st.nearTx ? `<button data-step="${st.id}">Sign with ${esc(appName(st))}</button>` :
         st.state === "ready" && st.link ? `<a class="button" href="${esc(st.link)}" target="_blank" rel="noopener">Open Rhea</a> <button data-step="${st.id}" data-manual="1">I've done this</button>` : "";
       const hash = st.txHash ? `<div class="hash">tx ${esc(st.txHash.slice(0, 18))}…</div>` : "";
       return `<li class="step ${st.state}"><div class="n">${i + 1}</div><div class="body"><div class="t">${esc(st.title)} <span class="state">${st.state}</span></div><div class="d">${esc(st.detail)}</div>${hash}${action}</div></li>`;
@@ -139,7 +157,7 @@ function render(s: Session) {
     b.disabled = inFlight.has(step.id);
     b.addEventListener("click", () => void sign(step, !!b.dataset.manual));
   });
-  // From the orb: hand the next ready step to the wallet, once. A step you turn down waits for a click.
+  // From the orb: hand the next ready step to its wallet, once. A step you turn down waits for a click.
   const next = auto && !s.done && !inFlight.size
     ? s.steps.find((st) => st.state === "ready" && (st.kind === "evm" || (st.kind === "near" && st.nearTx)) && !asked.has(st.id))
     : undefined;
@@ -150,7 +168,7 @@ function render(s: Session) {
   const waiting = s.steps.find((st) => inFlight.has(st.id));
   const sent = s.steps.find((st) => st.state === "submitted" && st.kind !== "intents");
   const n = (st: Step) => s.steps.indexOf(st) + 1;
-  $("status").textContent = waiting && waiting.kind !== "link" ? `Waiting for you to approve step ${n(waiting)} in ${walletName(waiting)}.`
+  $("status").textContent = waiting && waiting.kind !== "link" ? `Waiting for you to approve step ${n(waiting)} in ${appName(waiting)}.`
     : sent ? `Step ${n(sent)} sent. Waiting for the network to confirm it.` : "";
 }
 
@@ -171,8 +189,6 @@ async function sign(step: Step, manual: boolean) {
   }
 }
 
-const walletName = (step: Step) => (step.kind === "evm" ? "MetaMask" : walletId === "meteor-wallet" ? "Meteor" : "your NEAR wallet");
-
 async function refresh() {
   try {
     render((await api("/session")) as Session);
@@ -181,7 +197,7 @@ async function refresh() {
   }
 }
 
-// ---- Connect a wallet: the page reads only an address and sends it to Nierwall ----
+// ---- Connect a wallet: the page reads only the account or address and sends it to Nierwall ----
 
 async function addWallet(address: string, via: string) {
   const label = ($("nickname") as HTMLInputElement).value.trim() || undefined;
@@ -189,7 +205,7 @@ async function addWallet(address: string, via: string) {
   const j = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(j.error ?? res.statusText);
   ($("nickname") as HTMLInputElement).value = "";
-  $("done").textContent = `Connected "${j.wallet}". Nierwall is reading it now. Connect another, or close this page.`;
+  $("done").textContent = `Connected "${j.wallet}". Nierwall can now send it transactions for you to approve. Connect another, or close this page.`;
   $("done").hidden = false;
 }
 
@@ -197,16 +213,15 @@ function connectPage() {
   document.title = "Nierwall · Connect a wallet";
   $("eyebrow").textContent = "Nierwall · connect a wallet";
   $("title").textContent = "Connect a wallet";
-  $("health").textContent = "Nierwall reads only the address, to watch your balances and loans. It can't sign or move anything.";
+  $("health").textContent = "A connected wallet is one Nierwall can send transactions to for your approval: fixes for a Rhea loan, swaps and moves with NEAR Intents. To only watch a wallet, add its address in the Nierwall panel instead.";
   $("checks-card").hidden = true;
-  $("footer").textContent = "No keys, no signature: your wallet only shares its address. You can remove a wallet any time in Nierwall's Connections.";
+  $("footer").textContent = "Nierwall only gets the address, never your keys, and every transaction still needs your OK in the wallet. Remove a wallet any time in the Nierwall panel.";
   $("steps").innerHTML = `
     <li class="step"><div class="n">1</div><div class="body"><div class="t">Name it <span class="state">optional</span></div>
       <input id="nickname" maxlength="40" placeholder="e.g. Savings or Cash"></div></li>
     <li class="step"><div class="n">2</div><div class="body"><div class="t">Connect</div>
-      <button id="near">NEAR wallet: Meteor and others</button> <button id="evm">MetaMask (EVM)</button>
-      <div class="d" style="margin-top:12px">Or type a NEAR account, or paste a 0x address</div>
-      <input id="typed" placeholder="you.near or 0x…"> <button id="add">Add</button></div></li>`;
+      <button id="near">NEAR wallet</button> <button id="evm">MetaMask (EVM)</button>
+      <div class="d" style="margin-top:8px">NEAR wallet opens the list: Meteor, HOT, Intear, MyNearWallet and more.</div></div></li>`;
   const run = (b: HTMLButtonElement, f: () => Promise<void>) =>
     b.addEventListener("click", async () => {
       b.disabled = true;
@@ -221,25 +236,17 @@ function connectPage() {
       }
     });
   run($("near") as HTMLButtonElement, async () => {
-    connector ??= new NearConnector({ network: "mainnet" } as any);
-    const wallet = await connector.connect();
+    const wallet = await near().connect();
     const account = (await wallet.getAccounts())[0]?.accountId;
     if (!account) throw new Error("The wallet didn't share an account.");
     await addWallet(account, wallet.manifest.id);
   });
   run($("evm") as HTMLButtonElement, async () => {
-    const provider = pickEvmProvider();
-    if (!provider) throw new Error("No browser wallet found. Install MetaMask in this browser, or paste the address below.");
-    const [account] = (await provider.request({ method: "eth_requestAccounts" })) as string[];
+    const found = pickEvmProvider("metamask");
+    if (!found) throw new Error("No browser wallet found. Install MetaMask in this browser.");
+    const [account] = (await found.provider.request({ method: "eth_requestAccounts" })) as string[];
     if (!account) throw new Error("MetaMask didn't share an account.");
-    const mm = providers.find((p) => p.provider === provider)?.info.rdns ?? "";
-    await addWallet(account, mm.startsWith("io.metamask") || !mm ? "metamask" : mm);
-  });
-  run($("add") as HTMLButtonElement, async () => {
-    const typed = ($("typed") as HTMLInputElement).value.trim();
-    if (!typed) throw new Error("Type a NEAR account or paste an address first.");
-    await addWallet(typed, "typed");
-    ($("typed") as HTMLInputElement).value = "";
+    await addWallet(account, found.rdns.startsWith("io.metamask") || !found.rdns ? "metamask" : found.rdns);
   });
 }
 

@@ -74,7 +74,7 @@ export type WatchKind = "health_below" | "price_below" | "price_above" | "price_
 /** Portfolio value by asset class across wallets and loans (debt netted), as shares of net worth. */
 export interface Allocation {
   netWorthUsd: number;
-  classes: Array<{ cls: "stable" | "ETH" | "BTC" | "NEAR" | "other"; usd: number; pct: number }>;
+  classes: Array<{ cls: "stable" | "ETH" | "BTC" | "NEAR" | "SOL" | "other"; usd: number; pct: number }>;
 }
 
 export interface Watch {

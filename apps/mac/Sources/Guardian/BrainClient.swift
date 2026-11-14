@@ -153,7 +153,20 @@ final class BrainClient: ObservableObject {
         connections = try? JSONDecoder().decode(Connections.self, from: d)
     }
 
-    /// Opens the local page where you pick Meteor, MetaMask or another wallet; Nierwall reads only the address.
+    /// Watches a wallet by its address: read-only, nothing is ever sent to it. Returns an error message if it can't.
+    func addWallet(address: String, label: String) async -> String? {
+        var body: [String: Any] = ["address": address]
+        if !label.isEmpty { body["label"] = label }
+        guard let obj = await request("POST", "/api/wallets", body: body) else { return "Nierwall's brain didn't answer." }
+        if let error = obj["error"] as? String { return error }
+        if let c = obj["connections"], let d = try? JSONSerialization.data(withJSONObject: c) {
+            connections = try? JSONDecoder().decode(Connections.self, from: d)
+        }
+        return nil
+    }
+
+    /// Opens the local page where you connect a NEAR wallet (Meteor or another) or MetaMask, so Nierwall can send it
+    /// transactions to approve. Nierwall gets only the address.
     func connectWallet() async -> String? {
         guard let obj = await request("POST", "/api/connect") else { return "Nierwall's brain didn't answer." }
         guard let s = obj["url"] as? String, let url = URL(string: s) else { return obj["error"] as? String ?? "Couldn't open the connect page." }
@@ -198,9 +211,8 @@ final class BrainClient: ObservableObject {
     /// Opens the local review-and-sign page for a fix. Returns an error message if it can't.
     /// Opens a fix or plan to sign. With auto (the orb's "send it to your wallet"), the page asks the wallet to sign each
     /// step as it becomes ready, going straight to Meteor when that's named; you still approve every one there.
-    func review(fixId: String, wallet: String? = nil, auto: Bool = false) async -> String? {
-        var body: [String: Any]? = auto ? ["auto": true] : nil
-        if let wallet { body?["wallet"] = wallet }
+    func review(fixId: String, auto: Bool = false) async -> String? {
+        let body: [String: Any]? = auto ? ["auto": true] : nil
         guard let obj = await request("POST", "/api/fixes/\(fixId)/review", body: body) else { return "Nierwall's brain didn't answer." }
         if let urlString = obj["url"] as? String, let url = URL(string: urlString) {
             NSWorkspace.shared.open(url)

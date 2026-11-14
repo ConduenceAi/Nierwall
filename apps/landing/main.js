@@ -50,15 +50,6 @@ motionButton.addEventListener('click', () => {
   motionButton.querySelector('use').setAttribute('href', paused ? '#icon-play' : '#icon-pause');
 });
 
-for (const svg of document.querySelectorAll('[data-topography]')) {
-  for (let index = 0; index < 19; index += 1) {
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    const offset = index * 9;
-    path.setAttribute('d', `M ${-115 + offset} -40 C ${-65 + offset} 55, ${150 + offset * .5} 80, ${73 + offset * .7} 205 S ${-25 + offset * .9} 332, ${48 + offset} 415 S ${160 + offset * .65} 548, ${55 + offset * .95} 720`);
-    svg.append(path);
-  }
-}
-
 const setupDialog = document.querySelector('#setup-dialog');
 const privacyDialog = document.querySelector('#privacy-dialog');
 function openDialog(dialog) {

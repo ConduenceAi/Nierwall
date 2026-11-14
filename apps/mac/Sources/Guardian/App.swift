@@ -14,6 +14,7 @@ final class FloatingPanel: NSPanel {
         backgroundColor = .clear
         isOpaque = false
         hasShadow = true
+        appearance = NSAppearance(named: .darkAqua) // white on black, whatever the Mac's own setting
         contentView = content
     }
     override var canBecomeKey: Bool { true }
@@ -64,7 +65,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             review: { [weak self] fixId in Task { await self?.review(fixId) } },
             confirmWatch: { [weak self] id in Task { _ = await self?.brain.confirmWatch(id) } },
             snooze: { [weak self] id in Task { await self?.brain.snooze(id) } },
-            linkTelegram: { [weak self] in Task { if let err = await self?.brain.linkTelegram() { self?.ui.notice = err } } }
+            linkTelegram: { [weak self] in Task { if let err = await self?.brain.linkTelegram() { self?.ui.notice = err } } },
+            connectWallet: { [weak self] in Task { if let err = await self?.brain.connectWallet() { self?.ui.notice = err } } },
+            // The demo accounts are never sent anything; the review page says so.
+            readOnly: { [weak self] labels in
+                guard let c = self?.brain.connections, !c.usingDemo else { return nil }
+                return c.readOnly(among: labels)
+            }
         )
         panel = FloatingPanel(content: NSHostingView(rootView: PanelView(brain: brain, ui: ui, actions: actions)))
         overlay = OverlayController()
@@ -82,8 +89,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.ui.voiceTurn = false
         }
         brain.onSignUpdate = { [weak self] update in self?.signUpdated(update) }
-        brain.onReviewRequested = { [weak self] _ in self?.showPanel() }
-        notifier.onOpen = { [weak self] _ in self?.showPanel() }
+        brain.onReviewRequested = { [weak self] _ in self?.showPanel(chat: true) }
+        notifier.onOpen = { [weak self] _ in self?.showPanel(chat: true) }
         notifier.onSnooze = { [weak self] id in Task { await self?.brain.snooze(id) } }
 
         brain.$status.combineLatest(brain.$connection)
@@ -108,8 +115,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Opening the panel ends a conversation, unless the conversation itself opened it (an answer with buttons).
-    private func showPanel(keepOverlay: Bool = false) {
+    /// From the menu bar it opens on your wallets; for an alert or an answer, on the chat.
+    private func showPanel(keepOverlay: Bool = false, chat: Bool = false) {
         if overlay.isVisible, !keepOverlay { endConversation() }
+        ui.showChat = chat
         if let button = statusItem.button, let window = button.window {
             let rect = window.convertToScreen(button.convert(button.bounds, to: nil))
             let screen = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
@@ -149,7 +158,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func startConversation() {
         guard #available(macOS 26.0, *) else {
             ui.notice = "Voice needs macOS 26 or later. Typing works."
-            return showPanel()
+            return showPanel(chat: true)
         }
         speaker.stop()
         replyTimeout?.invalidate()
@@ -180,7 +189,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard voice === session else { return }
                 ui.notice = "Couldn't start listening: \(error.localizedDescription)"
                 endConversation(saying: "I couldn't start listening.")
-                showPanel(keepOverlay: true)
+                showPanel(keepOverlay: true, chat: true)
             }
         }
         // The first time, macOS downloads its speech model before the mic turns on.
@@ -296,29 +305,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         session.say(said)
     }
 
-    /// The first thing in a reply you could send to your wallet: a checked plan, or a fix that isn't hypothetical.
-    /// Only once you've connected a wallet of your own (never with the demo accounts), and named after the app your
-    /// NEAR wallet was connected through, like Meteor.
+    /// The first thing in a reply you could send: a checked plan, or a fix that isn't hypothetical. Only when every
+    /// wallet that signs it is connected (never with the demo accounts), and named after their wallet apps, like
+    /// "Meteor" or "MetaMask and Meteor".
     private func sendable(_ cards: [Card]) -> Offer? {
         guard let c = brain.connections, !c.wallets.isEmpty, !c.usingDemo else { return nil }
-        let wallet = c.nearWalletApp ?? "your wallet"
         for card in cards {
             switch card {
-            case .plan(let p) where p.steps.contains(where: { !$0.manual }): return Offer(id: p.planId, title: p.title, wallet: wallet)
-            case .fix(let f) where !f.fix.notes.contains(where: { $0.contains("hypothetical") }): return Offer(id: f.fix.id, title: f.fix.title, wallet: wallet)
+            case .plan(let p) where p.steps.contains(where: { !$0.manual }):
+                if let apps = c.apps(signing: p.steps.filter { !$0.manual }.map(\.wallet)) { return Offer(id: p.planId, title: p.title, wallet: apps) }
+            case .fix(let f) where !f.fix.notes.contains(where: { $0.contains("hypothetical") }):
+                if let apps = c.apps(signing: f.fix.steps.map(\.wallet)) { return Offer(id: f.fix.id, title: f.fix.title, wallet: apps) }
             default: continue
             }
         }
         return nil
     }
 
-    /// You said yes: the brain opens the checked steps, re-quoting anything that moves money, and the page asks your
-    /// wallet (Meteor, when that's how you connected) to sign each one as it becomes ready. You approve every step
-    /// there; the orb says when it's done.
+    /// You said yes: the brain opens the checked steps, re-quoting anything that moves money, and the page asks each
+    /// step's wallet app (Meteor, MetaMask…) to sign it as it becomes ready. You approve every step there; the orb
+    /// says when it's done.
     private func send(_ offer: Offer) {
         overlay.model.phase = .thinking
         Task {
-            if let error = await brain.review(fixId: offer.id, wallet: offer.wallet == "Meteor" ? "meteor-wallet" : nil, auto: true) {
+            if let error = await brain.review(fixId: offer.id, auto: true) {
                 return answer("I couldn't open it. \(error)")
             }
             answer("Opening \(offer.wallet). Approve it there, and I'll tell you when it's done.")
@@ -351,15 +361,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Something went wrong (the brain isn't running…): the panel says what.
         guard reply.via != nil else {
             endConversation(saying: "That didn't work. The details are in the Nierwall panel.")
-            return showPanel(keepOverlay: true)
+            return showPanel(keepOverlay: true, chat: true)
         }
         // Anything to click opens in the panel, and the conversation goes on.
-        if reply.cards.contains(where: needsClick) { showPanel(keepOverlay: true) }
+        if reply.cards.contains(where: needsClick) { showPanel(keepOverlay: true, chat: true) }
         // Not spoken (voice replies are off): it's in the panel, and it's your turn again.
         if overlay.model.phase == .thinking {
             if #available(macOS 26.0, *), let session { session.beginTurn() }
             listen()
-            showPanel(keepOverlay: true)
+            showPanel(keepOverlay: true, chat: true)
         }
     }
 
@@ -402,8 +412,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func updateIcon() {
         if brain.connection != .connected { return setIcon("shield.slash", tint: .secondaryLabelColor) }
         switch brain.status?.state {
-        case "attention": setIcon("exclamationmark.shield.fill", tint: .systemOrange)
-        case "degraded": setIcon("shield.slash", tint: .systemOrange)
+        case "attention": setIcon("exclamationmark.shield.fill", tint: NSColor(Palette.blue))
+        case "degraded": setIcon("shield.slash", tint: NSColor(Palette.blue))
         default: setIcon("shield", tint: nil)
         }
     }

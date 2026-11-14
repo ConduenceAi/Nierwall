@@ -13,8 +13,9 @@ vi.mock("../src/tokens.js", async (orig) => ({ ...(await orig<typeof import("../
 
 const { SignSessions } = await import("../src/sign/sessions.js");
 
+// Savings was connected through Meteor, so Nierwall can send it transactions; Watched was only typed in.
 const brain: any = {
-  wallets: { wallets: [{ label: "Savings", chain: "near", address: "you.near", role: "" }], watchRhea: ["Savings"] },
+  wallets: { wallets: [{ label: "Savings", chain: "near", address: "you.near", role: "", via: "meteor-wallet" }, { label: "Watched", chain: "near", address: "watched.near", role: "", via: "typed" }] },
   store: { addEvent: () => undefined },
 };
 const tgas = (actions: any[]) => actions.reduce((sum, a) => sum + Number(a.params.gas) / 1e12, 0);
@@ -28,7 +29,7 @@ describe("signing: Rhea add collateral", () => {
   it("wraps plain NEAR and adds it as collateral in one transaction, within the gas limit", async () => {
     const s = await new SignSessions(brain, () => undefined).createFromPlan(plan({}));
     const [step] = s.steps;
-    expect([step!.kind, step!.state, step!.nearTx!.receiverId]).toEqual(["near", "ready", "wrap.near"]);
+    expect([step!.kind, step!.state, step!.nearTx!.receiverId, step!.walletApp, step!.walletAppName]).toEqual(["near", "ready", "wrap.near", "meteor-wallet", "Meteor"]);
     const actions = step!.nearTx!.actions as any[];
     expect(actions.map((a) => a.params.methodName)).toEqual(["storage_deposit", "near_deposit", "ft_transfer_call"]);
     expect(actions[1].params.deposit).toBe((100n * 10n ** 24n).toString());
@@ -49,10 +50,14 @@ describe("signing: Rhea add collateral", () => {
     expect([fix.steps[0]!.kind, actions.map((a) => a.params.methodName).join(",")]).toEqual(["near", "storage_deposit,near_deposit,ft_transfer_call"]);
     expect(actions[1].params.deposit).toBe((50n * 10n ** 24n).toString());
   });
+
+  it("refuses to send from a wallet that was only typed in", async () => {
+    await expect(new SignSessions(brain, () => undefined).createFromPlan(plan({ wallet: "Watched" }))).rejects.toThrow("Watched was added by address");
+  });
 });
 
-describe("signing: the orb's \"send it to Meteor\"", () => {
-  it("opens the review page on Meteor and asks it to sign each step; a click in the panel opens it plainly", async () => {
+describe("signing: the orb's \"send it\"", () => {
+  it("opens the review page and asks each step's wallet to sign it; a click in the panel opens it plainly", async () => {
     const { Hono } = await import("hono");
     const { registerSignRoutes } = await import("../src/sign/routes.js");
     const saved = plan({});
@@ -62,7 +67,7 @@ describe("signing: the orb's \"send it to Meteor\"", () => {
       const res = await app.request("/api/fixes/plan_test/review", { method: "POST", headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
       return (await res.json()) as { url: string };
     };
-    expect((await post({ wallet: "meteor-wallet", auto: true })).url).toMatch(/^http:\/\/127\.0\.0\.1:7420\/sign\/[\w-]+\?wallet=meteor-wallet&auto=1$/);
+    expect((await post({ auto: true })).url).toMatch(/^http:\/\/127\.0\.0\.1:7420\/sign\/[\w-]+\?auto=1$/);
     expect((await post()).url).toMatch(/^http:\/\/127\.0\.0\.1:7420\/sign\/[\w-]+$/);
   });
 });

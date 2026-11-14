@@ -62,9 +62,11 @@ export function evmNetwork(network: EvmNetwork): EvmChain {
   return evmChain(c.id)!;
 }
 
-/** The network's name for people: "Arbitrum", "NEAR". */
+/** The network's name for people: "Arbitrum", "NEAR", "Solana". */
 export function networkName(network: Network | string): string {
-  return network === "near" ? "NEAR" : (CHAINS.find((c) => c.intents === network)?.name ?? network);
+  if (network === "near") return "NEAR";
+  if (network === "sol") return "Solana";
+  return CHAINS.find((c) => c.intents === network)?.name ?? network;
 }
 
 const clients = new Map<number, PublicClient>();

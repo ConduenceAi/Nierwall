@@ -24,7 +24,7 @@ function watchedPrice(p: Record<string, any>, snap: Snapshot): { price: number |
   return { price: snap.prices[p.symbol as Symbol]?.usd, name: String(p.symbol) };
 }
 
-export const CLASS_NAMES: Record<string, string> = { stable: "Stablecoins", ETH: "ETH", BTC: "BTC", NEAR: "NEAR", other: "Other tokens" };
+export const CLASS_NAMES: Record<string, string> = { stable: "Stablecoins", ETH: "ETH", BTC: "BTC", NEAR: "NEAR", SOL: "SOL", other: "Other tokens" };
 const className = (cls: unknown) => CLASS_NAMES[String(cls)] ?? String(cls);
 
 const coinName = (p: Record<string, any>) => (p.coinId && p.name ? `${p.symbol} (${p.name})` : String(p.symbol ?? p.coinId));

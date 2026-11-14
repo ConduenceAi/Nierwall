@@ -18,7 +18,7 @@ export interface ApiOptions {
   token: string;
   port: number;
   telegram?: { pairLink(): Promise<string | null>; linked(): boolean };
-  /** Extra route groups registered by other modules (Snap analysis, signing page). */
+  /** Extra route groups registered by other modules (wallets, the connect and signing page). */
   extend?: Array<(app: Hono) => void>;
 }
 

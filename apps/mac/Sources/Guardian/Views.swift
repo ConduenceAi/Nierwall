@@ -5,14 +5,20 @@ final class UIState: ObservableObject {
     @Published var listening = false
     @Published var notice: String?
     @Published var speakReplies = true
+    /// The panel opens on your wallets. The chat is behind the button at the top right, and opens on its own for an
+    /// alert or an answer with something to click.
+    @Published var showChat = false
     var voiceTurn = false
 }
 
+/// Nierwall blue (#3B82F6), black and white. Red is kept for danger only: a critical alert, a loan near liquidation.
 enum Palette {
-    static let near = Color(red: 0.0, green: 0.55, blue: 0.42)
-    static let warn = Color.orange
-    static let crit = Color.red
-    static let ok = Color.green
+    static let blue = Color(red: 59 / 255, green: 130 / 255, blue: 246 / 255)
+    static let crit = Color(red: 239 / 255, green: 68 / 255, blue: 68 / 255)
+    static let warn = blue
+    static let ok = blue
+    static let card = Color.white.opacity(0.06)
+    static let rule = Color.white.opacity(0.12)
 }
 
 /// Actions the panel can ask the app to perform.
@@ -23,6 +29,10 @@ struct PanelActions {
     var confirmWatch: (String) -> Void
     var snooze: (String) -> Void
     var linkTelegram: () -> Void
+    /// Opens the browser page that connects a wallet, so Nierwall can send it transactions to approve.
+    var connectWallet: () -> Void
+    /// The first of these wallets that's only read (added by address), so a fix or plan through it can't be sent.
+    var readOnly: ([String]) -> String?
 }
 
 struct PanelView: View {
@@ -30,16 +40,13 @@ struct PanelView: View {
     @ObservedObject var ui: UIState
     let actions: PanelActions
     @State private var input = ""
-    @State private var showConnections = false
     @FocusState private var inputFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
             header
             Divider().opacity(0.5)
-            if showConnections {
-                ScrollView { ConnectionsView(brain: brain, linkTelegram: actions.linkTelegram).padding(14) }
-            } else {
+            if ui.showChat {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 12) {
@@ -51,21 +58,30 @@ struct PanelView: View {
                         }
                         .padding(14)
                     }
+                    .onAppear { if let last = brain.items.last { proxy.scrollTo(last.id, anchor: .bottom) } }
                     .onChange(of: brain.items.count) { _, _ in
                         if let last = brain.items.last { withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(last.id, anchor: .bottom) } }
                     }
                 }
+            } else {
+                ScrollView { ConnectionsView(brain: brain, linkTelegram: actions.linkTelegram).padding(14) }
             }
             if let notice = ui.notice {
                 Text(notice).font(.caption).foregroundStyle(.secondary).padding(.horizontal, 14).padding(.vertical, 6)
             }
             Divider().opacity(0.5)
-            inputRow
+            if ui.showChat {
+                inputRow
+            } else {
+                Text("⌘⌥ to talk · Esc to stop").font(.system(size: 10)).foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity).padding(.vertical, 9)
+            }
         }
         .frame(width: 390, height: 540)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.white.opacity(0.08)))
-        .onAppear { inputFocused = true }
+        .background(.black, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Palette.rule))
+        .environment(\.colorScheme, .dark)
+        .tint(Palette.blue)
     }
 
     private var header: some View {
@@ -77,11 +93,12 @@ struct PanelView: View {
             }
             Spacer()
             attestationChip
-            Button { showConnections.toggle() } label: {
-                Image(systemName: showConnections ? "bubble.left.and.bubble.right" : "link").font(.system(size: 13, weight: .medium))
+            Button { ui.showChat.toggle() } label: {
+                Image(systemName: ui.showChat ? "wallet.bifold" : "bubble.left.and.bubble.right").font(.system(size: 13, weight: .medium))
             }
             .buttonStyle(.plain)
-            .help(showConnections ? "Back to the chat" : "Connections: wallets and features")
+            .foregroundStyle(Palette.blue)
+            .help(ui.showChat ? "Your wallets" : "Chat with Nierwall")
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
     }
@@ -110,8 +127,8 @@ struct PanelView: View {
         return Text(verified ? "NEAR AI · TEE verified" : "Templates only")
             .font(.system(size: 10, weight: .medium, design: .monospaced))
             .padding(.horizontal, 7).padding(.vertical, 3)
-            .foregroundStyle(verified ? Palette.near : .secondary)
-            .overlay(Capsule().strokeBorder(verified ? Palette.near : .secondary.opacity(0.5)))
+            .foregroundStyle(verified ? Palette.blue : .secondary)
+            .overlay(Capsule().strokeBorder(verified ? Palette.blue : .secondary.opacity(0.5)))
             .help(brain.status?.attestation.detail ?? "")
     }
 
@@ -122,12 +139,12 @@ struct PanelView: View {
                 Text("Start the brain with `pnpm brain`, then ask me anything.").font(.callout).foregroundStyle(.secondary)
             } else if let c = brain.connections, c.wallets.isEmpty, !c.usingDemo {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Nothing is connected yet").font(.headline)
-                    Text("Connect a wallet and Nierwall watches its balances and any Rhea loan. It reads only the address. Or press ⌘⌥ and say \u{201C}help me set up\u{201D}.")
+                    Text("No wallets yet").font(.headline)
+                    Text("Add a wallet's address and Nierwall watches its balances and any Rhea loan. Or press ⌘⌥ and say \u{201C}help me set up\u{201D}.")
                         .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     HStack {
-                        Button("Connect a wallet") { showConnections = true; Task { _ = await brain.connectWallet() } }.buttonStyle(.borderedProminent)
-                        Button("Try demo accounts") { Task { await brain.setFeature(demo: true) } }
+                        Button("Add a wallet") { ui.showChat = false }.buttonStyle(.borderedProminent)
+                        Button("Try the demo") { Task { await brain.setFeature(demo: true) } }
                     }.controlSize(.small)
                 }
             } else if brain.positions.isEmpty {
@@ -147,9 +164,10 @@ struct PanelView: View {
                 .textFieldStyle(.plain)
                 .focused($inputFocused)
                 .onSubmit { submit() }
+                .onAppear { inputFocused = true }
             Button(action: actions.toggleMic) {
                 Image(systemName: ui.listening ? "stop.circle.fill" : "mic.circle.fill").font(.system(size: 22))
-                    .foregroundStyle(ui.listening ? Palette.crit : Color.accentColor)
+                    .foregroundStyle(ui.listening ? .white : Palette.blue)
             }
             .buttonStyle(.plain)
             .help(ui.listening ? "End the conversation" : "Talk (or press ⌘⌥ anywhere)")
@@ -180,8 +198,8 @@ struct ChatRow: View {
         VStack(alignment: item.role == .user ? .trailing : .leading, spacing: 8) {
             switch item.role {
             case .user:
-                Text(item.text).padding(.horizontal, 10).padding(.vertical, 7)
-                    .background(Color.accentColor.opacity(0.15), in: RoundedRectangle(cornerRadius: 12))
+                Text(item.text).foregroundStyle(.white).padding(.horizontal, 10).padding(.vertical, 7)
+                    .background(Palette.blue, in: RoundedRectangle(cornerRadius: 12))
                     .frame(maxWidth: .infinity, alignment: .trailing)
             case .assistant:
                 Text(item.text).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
@@ -204,9 +222,9 @@ struct CardView: View {
         switch card {
         case .position(let p): PositionCardView(card: p)
         case .alert(let a): AlertCardView(card: a, snooze: actions.snooze)
-        case .fix(let f): FixCardView(card: f, review: actions.review)
+        case .fix(let f): FixCardView(card: f, review: actions.review, readOnly: actions.readOnly(f.fix.steps.map(\.wallet)), connect: actions.connectWallet)
         case .watchConfirm(let w): WatchConfirmView(card: w, confirm: actions.confirmWatch)
-        case .plan(let p): PlanCardView(card: p, review: actions.review)
+        case .plan(let p): PlanCardView(card: p, review: actions.review, readOnly: actions.readOnly(p.steps.filter { !$0.manual }.map(\.wallet)), connect: actions.connectWallet)
         case .other: EmptyView()
         }
     }
@@ -240,8 +258,8 @@ struct PositionCardView: View {
             .font(.caption2).foregroundStyle(.secondary)
         }
         .padding(11)
-        .background(.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.separator))
+        .background(Palette.card, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Palette.rule))
     }
 }
 
@@ -262,7 +280,7 @@ struct HealthGauge: View {
                     .init(color: Palette.ok, location: min(0.99, f - 1 + 0.001)),
                 ], startPoint: .leading, endPoint: .trailing)).frame(height: 6)
                 Rectangle().fill(.primary).frame(width: 2, height: 12).offset(x: pos(f) - 1)
-                Circle().fill(.background).frame(width: 12, height: 12).overlay(Circle().stroke(.primary, lineWidth: 2.5)).offset(x: pos(health) - 6)
+                Circle().fill(.black).frame(width: 12, height: 12).overlay(Circle().stroke(.primary, lineWidth: 2.5)).offset(x: pos(health) - 6)
             }
             .frame(height: 12)
         }
@@ -286,19 +304,22 @@ struct AlertCardView: View {
             }
         }
         .padding(11)
-        .background(color.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+        .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
     }
 }
 
 struct FixCardView: View {
     let card: FixCard
     let review: (String) -> Void
+    /// A wallet the fix sends from that's only read: then the card offers to connect it instead.
+    var readOnly: String? = nil
+    var connect: () -> Void = {}
     var body: some View {
         let f = card.fix
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: 8) {
                 Text(String(UnicodeScalar(UInt8(64 + max(1, min(f.rank, 26)))))).font(.system(size: 12, weight: .bold, design: .monospaced))
-                    .frame(width: 20, height: 20).background(Color.accentColor.opacity(0.15), in: Circle())
+                    .frame(width: 20, height: 20).background(Palette.blue.opacity(0.25), in: Circle())
                 VStack(alignment: .leading, spacing: 3) {
                     Text(f.title).font(.callout.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
                     if let a = f.healthAfter {
@@ -310,14 +331,44 @@ struct FixCardView: View {
                 Text("\(i + 1). [\(s.chain)] \(s.description) · sign in \(s.wallet)").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             ForEach(f.notes, id: \.self) { n in Text("· \(n)").font(.caption2).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true) }
-            Button("Review & sign") { review(f.id) }
-                .buttonStyle(.borderedProminent).controlSize(.small)
+            SendButton(readOnly: readOnly, connect: connect) { review(f.id) }
                 .disabled(f.notes.contains { $0.contains("hypothetical") })
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(11)
-        .background(.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.separator))
+        .background(Palette.card, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Palette.rule))
+    }
+}
+
+/// An (i) that explains a control only when asked: on hover, or in a small popover on click.
+struct InfoButton: View {
+    let text: String
+    @State private var shown = false
+    var body: some View {
+        Button { shown.toggle() } label: { Image(systemName: "info.circle").foregroundStyle(.secondary) }
+            .buttonStyle(.plain)
+            .help(text)
+            .popover(isPresented: $shown, arrowEdge: .bottom) {
+                Text(text).font(.callout).fixedSize(horizontal: false, vertical: true).frame(width: 260).padding(12)
+            }
+    }
+}
+
+/// "Review & sign" when every wallet that signs is connected; otherwise a way to connect the one that's only read.
+struct SendButton: View {
+    let readOnly: String?
+    let connect: () -> Void
+    let review: () -> Void
+    var body: some View {
+        if let wallet = readOnly {
+            VStack(alignment: .leading, spacing: 3) {
+                Button("Connect \(wallet) to send", action: connect).buttonStyle(.borderedProminent).controlSize(.small)
+                Text("\(wallet) was added by address, so Nierwall only reads it.").font(.caption2).foregroundStyle(.secondary)
+            }
+        } else {
+            Button("Review & sign", action: review).buttonStyle(.borderedProminent).controlSize(.small)
+        }
     }
 }
 
@@ -325,11 +376,13 @@ struct FixCardView: View {
 struct PlanCardView: View {
     let card: PlanCard
     let review: (String) -> Void
+    var readOnly: String? = nil
+    var connect: () -> Void = {}
     private func hf(_ v: Double?) -> String { v.map { String(format: "%.2f", $0) } ?? "no debt" }
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: 6) {
-                Image(systemName: "checklist").foregroundStyle(Palette.near)
+                Image(systemName: "checklist").foregroundStyle(Palette.blue)
                 Text(card.title).font(.callout.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
                 Spacer()
                 if card.simulated { Text("SIMULATED").font(.system(size: 9, weight: .bold, design: .monospaced)).foregroundStyle(Palette.warn) }
@@ -349,12 +402,12 @@ struct PlanCardView: View {
             ForEach(card.warnings, id: \.self) { w in
                 Text("⚠︎ \(w)").font(.caption2).foregroundStyle(Palette.warn).fixedSize(horizontal: false, vertical: true)
             }
-            Button("Review & sign") { review(card.planId) }.buttonStyle(.borderedProminent).controlSize(.small)
+            SendButton(readOnly: readOnly, connect: connect) { review(card.planId) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(11)
-        .background(.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Palette.near.opacity(0.45)))
+        .background(Palette.card, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Palette.blue.opacity(0.45)))
     }
 }
 
@@ -373,14 +426,20 @@ struct WatchConfirmView: View {
                 .buttonStyle(.borderedProminent).controlSize(.small).disabled(done)
         }
         .padding(11)
-        .background(Color.purple.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+        .background(Palette.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
     }
 }
 
-/// What's connected and what can be: your wallets (read-only, by address), and the features you turn on.
+/// Your wallets and what's turned on. Type an address to watch a wallet (read-only), or connect one through its wallet
+/// app in the browser so Nierwall can also send it transactions to approve.
 struct ConnectionsView: View {
     @ObservedObject var brain: BrainClient
     let linkTelegram: () -> Void
+    @State private var address = ""
+    @State private var name = ""
+    @State private var showAdd = false
+    @State private var adding = false
+    @State private var addError: String?
 
     var body: some View {
         let c = brain.connections
@@ -390,22 +449,21 @@ struct ConnectionsView: View {
                 if let wallets = c?.wallets, !wallets.isEmpty {
                     ForEach(wallets) { w in walletRow(w) }
                 } else {
-                    Text(c?.usingDemo == true ? "Using the public demo accounts until you connect your own." : "None yet. Nierwall reads only addresses: it never asks for keys and can't move anything.")
-                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Text("None yet.").font(.caption).foregroundStyle(.secondary)
                 }
-                Button("Connect a wallet") { Task { _ = await brain.connectWallet() } }.buttonStyle(.borderedProminent).controlSize(.small)
             }
+            addForm
             Divider()
             VStack(alignment: .leading, spacing: 10) {
                 Text("Features").font(.headline)
                 Toggle(isOn: Binding(get: { c?.transactionSafety ?? false }, set: { on in Task { await brain.setFeature(transactionSafety: on) } })) {
-                    feature("Transaction safety", "Checks every MetaMask transaction before you sign. Off until you turn it on.")
+                    feature("Transaction safety", "Checks every MetaMask transaction against your rules before you sign. Off until you turn it on.")
                 }
                 if c?.transactionSafety == true {
                     Button("Install the Nierwall Snap in MetaMask Flask") { brain.openSnapInstall() }.buttonStyle(.link).font(.caption)
                 }
                 Toggle(isOn: Binding(get: { c?.demo ?? false }, set: { on in Task { await brain.setFeature(demo: on) } })) {
-                    feature("Demo accounts", c?.wallets.isEmpty == false ? "Your wallets are used, so the demo accounts stay out." : "Public read-only accounts, to look around before connecting yours.")
+                    feature("Demo portfolio", c?.wallets.contains { !$0.isDemo } == true ? "Your wallets are used, so the demo stays out." : "Small fixed amounts on NEAR, Base and Solana with a Rhea loan and two rules, to look around before adding yours.")
                 }
             }
             Divider()
@@ -422,28 +480,82 @@ struct ConnectionsView: View {
         .task { await brain.loadConnections() }
     }
 
-    private func walletRow(_ w: Connections.Wallet) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: w.chain == "near" ? "n.circle.fill" : "e.circle.fill").foregroundStyle(w.chain == "near" ? Palette.near : .secondary)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(w.label).font(.callout.weight(.semibold))
-                Text([short(w.address), w.app.map { "via \($0)" }, w.chain == "evm" ? "every EVM network" : nil].compactMap { $0 }.joined(separator: " · "))
-                    .font(.caption).foregroundStyle(.secondary)
-                if let loan = w.rhea {
-                    Text("Rhea loan · health \(loan.healthFactor.map { String(format: "%.2f", $0) } ?? "no debt")").font(.caption).foregroundStyle(Palette.near)
+    /// Two ways to add a wallet, each explained behind its (i): watch one by its address (the fields open here), or
+    /// connect one in the browser.
+    private var addForm: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 14) {
+                HStack(spacing: 4) {
+                    Button("Add wallet") { showAdd.toggle(); addError = nil }
+                    InfoButton(text: "Watch a wallet by its address: a NEAR account, a 0x address or a Solana address. Nierwall reads its balances and loans and alerts you, but can't send it anything.")
+                }
+                HStack(spacing: 4) {
+                    Button("Connect wallet") { Task { _ = await brain.connectWallet() } }
+                    InfoButton(text: "Opens your browser to connect Meteor or another NEAR wallet, or MetaMask for EVM networks. Then Nierwall can send it fixes and swaps for you to approve. It only gets the address, never your keys.")
                 }
             }
-            Spacer()
-            Button { Task { await brain.removeWallet(w.label) } } label: { Image(systemName: "xmark.circle") }
-                .buttonStyle(.plain).foregroundStyle(.secondary).help("Stop watching \(w.label)")
+            if showAdd {
+                TextField("you.near, 0x… or a Solana address", text: $address).textFieldStyle(.roundedBorder).onSubmit(add)
+                HStack(spacing: 8) {
+                    TextField("Name, like Savings", text: $name).textFieldStyle(.roundedBorder).onSubmit(add)
+                    Button(adding ? "Adding…" : "Add", action: add).buttonStyle(.borderedProminent)
+                        .disabled(adding || address.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+                if let addError {
+                    Text(addError).font(.caption).foregroundStyle(Palette.crit).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .controlSize(.small)
+    }
+
+    private func add() {
+        let a = address.trimmingCharacters(in: .whitespaces)
+        guard !a.isEmpty, !adding else { return }
+        adding = true
+        addError = nil
+        Task {
+            let err = await brain.addWallet(address: a, label: name.trimmingCharacters(in: .whitespaces))
+            adding = false
+            if let err { addError = err } else { address = ""; name = ""; showAdd = false }
         }
     }
 
+    private func walletRow(_ w: Connections.Wallet) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: w.chain == "near" ? "n.circle.fill" : w.chain == "solana" ? "s.circle.fill" : "e.circle.fill").foregroundStyle(w.connected ? Palette.blue : .secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(w.label).font(.callout.weight(.semibold))
+                Text(w.isDemo ? "Demo portfolio · fixed amounts, live prices" : [short(w.address), w.chain == "evm" ? "every EVM network" : w.chain == "solana" ? "Solana" : nil].compactMap { $0 }.joined(separator: " · "))
+                    .font(.caption).foregroundStyle(.secondary)
+                if !w.isDemo {
+                    HStack(spacing: 6) {
+                        Text(w.connected ? "Connected · \(w.app ?? "wallet")" : "Read-only").font(.caption2.weight(.medium)).foregroundStyle(w.connected ? Palette.blue : .secondary)
+                        // Solana wallets are only read: there's nothing to connect them to.
+                        if !w.connected && w.chain != "solana" {
+                            Button("Connect to send") { Task { _ = await brain.connectWallet() } }.buttonStyle(.link).font(.caption2)
+                        }
+                    }
+                }
+                if let loan = w.rhea {
+                    Text("Rhea loan · health \(loan.healthFactor.map { String(format: "%.2f", $0) } ?? "no debt")").font(.caption).foregroundStyle(Palette.blue)
+                }
+            }
+            Spacer()
+            if !w.isDemo {
+                Button { Task { await brain.removeWallet(w.label) } } label: { Image(systemName: "xmark.circle") }
+                    .buttonStyle(.plain).foregroundStyle(.secondary).help("Stop watching \(w.label)")
+            }
+        }
+    }
+
+    /// A switch's label, as wide as the row, so every switch lines up on the right.
     private func feature(_ title: String, _ detail: String) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(title).font(.callout)
             Text(detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func status(_ name: String, _ value: String, ok: Bool) -> some View {

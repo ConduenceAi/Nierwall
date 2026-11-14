@@ -28,15 +28,21 @@ leaves the signing to you.
 
 ### 1. You talk to it
 
-Nierwall starts with nothing connected and nothing turned on. Press **⌘⌥** and say "help me set up": the orb explains
-what it does and connects a wallet. It opens a page on your Mac where you pick Meteor, MetaMask or another wallet,
-and Nierwall reads only the address (no keys, no signature), or you just say a NEAR account like you.near. It asks
-what to call the wallet. Any Rhea loan in it shows up right away, and alerts start once you confirm a floor the orb
-proposes. The shield in the menu bar has a **Connections** view: your wallets, the features you can turn on, and how
-each service is doing. Demo accounts are there too, to look around first.
+Nierwall starts with no wallets. There are two ways to add one, from the shield in the menu bar, or by asking the orb
+(press **⌘⌥** and say "help me set up"):
 
-Press **⌘⌥** in any app and a Siri-style orb appears at the top of your screen, over whatever you're doing, with a
-soft glow around the edges. Just talk. When you pause, Nierwall answers out loud and then listens again, so you can
+- **Add wallet** to watch it: type its address (a NEAR account like you.near, a 0x address, or a Solana address) and a name.
+  Nierwall reads its balances and any Rhea loan and alerts you, but never sends it anything.
+- **Connect wallet**: a page opens in your browser where you pick Meteor or another NEAR wallet, or MetaMask for EVM
+  networks. Nierwall gets only the address (no keys, no signature), and can now send that wallet fixes and swaps
+  for you to approve. Connecting an address you already watch upgrades it.
+
+Any Rhea loan shows up right away, and alerts start once you confirm a floor the orb proposes. The shield opens on
+your wallets, each marked connected or read-only, with the features you can turn on and a demo portfolio to look
+around first (see [Demo portfolio](#demo-portfolio)); the chat is behind the button at the top right.
+
+Press **⌘⌥** in any app and a Siri-style orb appears a fifth of the way down your screen, over whatever you're doing:
+blue light in a black glass sphere with a thin silver rim, and a soft glow around the edges. Just talk. When you pause, Nierwall answers out loud and then listens again, so you can
 keep going like a conversation. Talk over it to cut in. Press **Esc** when you're done, or simply stop talking and
 it goes away after a few quiet seconds. For example:
 
@@ -49,11 +55,11 @@ to act on, such as a fix with a **Review & sign** button or a new watch to confi
 the menu bar with the details while you keep talking. Nierwall starts a new watch only after you confirm it. The full chat history, with
 health gauges and alerts, is always one click away on the shield in the menu bar.
 
-When an answer is something to sign, such as repaying your Rhea loan, the orb says what it does and asks "Should I
-send it to Meteor?" Say yes and it opens Meteor Wallet with the first step; you approve each step there, and the orb
-tells you when it's done. Your keys never leave Meteor, and Meteor runs no code from Nierwall: Nierwall checks the
-transaction first, and Meteor signs and sends it. Only a clear yes counts. "Yes, but first…" or a new question sends
-nothing.
+When an answer is something to sign, such as repaying your Rhea loan, and the wallets it goes through are connected,
+the orb says what it does and asks "Should I send it to Meteor?" (or MetaMask, or whichever wallet that is). Say yes
+and that wallet opens with the first step; you approve each step there, and the orb tells you when it's done. Your
+keys never leave your wallet, and it runs no code from Nierwall: Nierwall checks the transaction first, and the
+wallet signs and sends it. Only a clear yes counts. "Yes, but first…" or a new question sends nothing.
 
 Speech recognition runs on the Mac, and the audio never leaves it. The orb's voice goes through Apple's echo
 cancellation, so the mic hears you and not the orb. ⌘⌥ is detected without keyboard permissions, so Nierwall
@@ -82,19 +88,21 @@ says why. Two rules stay fixed in code: health under 1.1, or less than 5% from l
 if the AI is unavailable alerts still go out on fixed rules. If you don't react it reminds you, if things get worse
 it escalates, and when the loan recovers it tells you and closes the issue.
 
-Here is an alert from `pnpm demo` (shortened), on a public account during a simulated 9% NEAR drop:
+Here is an alert from `pnpm demo --portfolio` (shortened), on the demo portfolio during a simulated 9% NEAR drop:
 
-> **Rhea · NEAR is below your floor.** Health factor 1.25 (your floor 1.28).
-> **A.** Move 1,359 USDC from Demo cash wallet (Base) to NEAR, then repay on Rhea → health 1.48.
-> NEAR Intents: about 1,358.84 USDC arrives in ~35 s.
-> **B.** Add 916 NEAR as collateral → health 1.48.
+> **Rhea · NEAR is below your floor.** Health factor 1.30 (your floor 1.33).
+> **A.** Repay 4 USDC on Rhea from Demo NEAR wallet → health 1.62.
+> **B.** Add 3 NEAR as collateral from Demo NEAR wallet → health 1.62.
 
-Fix A moves money between chains with **NEAR Intents**. Before you see it, Nierwall gets a live quote and checks
-it: the money goes to your own account, the route and amount match, the minimum you receive is within slippage,
-and there's enough time to send. A review page then hands each step to your own wallet: MetaMask for EVM networks
-(it switches MetaMask to the right one, and adds it if MetaMask doesn't have it yet), and Meteor or another NEAR wallet
-for NEAR. Say yes to the orb and the page goes straight to Meteor and asks for each step as it's ready. Nierwall
-follows the transfer and the repayment until both are confirmed.
+When the USDC sits on another network instead, the fix first moves it to NEAR with **NEAR Intents**. Before you see
+it, Nierwall gets a live quote and checks it: the money goes to your own account, the route and amount match, the
+minimum you receive is within slippage, and there's enough time to send. A review page then hands each step to the
+wallet app that wallet was connected with: MetaMask for EVM networks (it switches MetaMask to the right one, and
+adds it if MetaMask doesn't have it yet), and Meteor or another NEAR wallet for NEAR. Say yes to the orb and the
+page goes straight to that wallet and asks for each step as it's ready. Nierwall follows the transfer and the
+repayment until both are confirmed. Only connected wallets can send: a fix that would go through a wallet you only
+watch shows **Connect to send** instead, and when more than one connected wallet could do what you ask, the orb asks
+which one.
 
 ### 3. It advises, and checks every plan
 
@@ -117,9 +125,10 @@ Linea, Berachain, Sonic, Unichain and Mantle. On networks whose nodes can't simu
 Aurora) or that Nierwall doesn't know yet, it still reads transfers and approvals and says it only decoded the call.
 
 - **What you send and get:** "You send 1,500 USDC ($1,500) · You get 0.74 ETH ($1,480)".
-- **Your mix:** if a swap breaks a target you set, it says so and suggests what else you could use. For example:
-  "Stablecoins would go from 30% to 15% of your portfolio. You set a minimum of 20%. If you want ETH, you could
-  swap NEAR (about $5,000 in Savings) instead and keep stablecoins at 30%."
+- **Your rules:** if a swap breaks a target mix you set, it says so and suggests what else you could use. For
+  example: "Stablecoins would go from 30% to 15% of your portfolio. You set a minimum of 20%. If you want ETH, you
+  could swap NEAR (about $5,000 in Savings) instead and keep stablecoins at 30%." If it would take the sending
+  wallet under a reserve you set ("keep at least 10 USDC"), it says that too.
 - **Bad deals:** a swap that returns much less value than it takes, a call that takes tokens and gives nothing
   back, or a transaction that would fail and waste the fee.
 - **Hidden permissions:** an unlimited approval or "approve all" to an unfamiliar contract tucked inside a bigger
@@ -131,7 +140,7 @@ Aurora) or that Nierwall doesn't know yet, it still reads transfers and approval
   before and after. A new key with full access to your NEAR account is flagged critical, as is a transaction whose
   target doesn't match the NEAR action inside it.
 
-It's off until you turn on **Transaction safety** in Connections (or ask the orb), and until then the Snap says its
+It's off until you turn on **Transaction safety** in the shield (or ask the orb), and until then the Snap says its
 checks are off. It never blocks a transaction. If it can't check one, it says "not checked", never "looks fine".
 
 ## How it works
@@ -166,7 +175,7 @@ flowchart LR
 | Brain | Reads loans and prices, runs watches, plans fixes, talks to the AI, sends Telegram alerts, answers the Snap | TypeScript on Node 24 |
 | Memory | Remembers your goals, limits and preferences as dated facts, so it knows what changed and when | Graphiti (Zep's open-source engine) on an embedded FalkorDB, Python |
 | MetaMask Snap | Pre-sign checks inside MetaMask | MetaMask Snaps SDK |
-| Review page | Hands each step of a fix to your wallet | MetaMask (EIP-6963), NEAR Connect |
+| Connect and review page | Connects your wallets, and hands each step of a fix to the wallet app it was connected with | NEAR Connect (Meteor and other NEAR wallets), MetaMask (EIP-6963) for EVM networks |
 
 ## Built on NEAR
 
@@ -175,18 +184,20 @@ flowchart LR
 | **NEAR AI Cloud** | Runs the assistant inside TEEs: `z-ai/glm-5.3-flash` for everyday chat and alert judgment, the larger `deepseek-ai/DeepSeek-V4.1-Flash-1017` for planning. Nierwall verifies both attestations before sending anything, encrypts chats end to end, and verifies each reply's signature. The app shows "NEAR AI · TEE verified". |
 | **Rhea** | NEAR's lending protocol. Nierwall reads your Rhea loans and previews every fix with Rhea's own risk weights. |
 | **NEAR Intents** | Every swap and cross-chain move in a fix or plan (e.g. USDC from Arbitrum to NEAR, ETH → USDC on Base, NEAR → USDC), through the 1Click API, with Nierwall's own checks on every quote. Its token list sets which tokens Nierwall reads in your wallets, on all ten EVM networks it supports, and prices them. |
-| **NEAR Connect** | Opens your NEAR wallet to sign the NEAR side of a fix. |
+| **NEAR Connect** | Connects your NEAR wallet (Meteor, HOT, Intear, MyNearWallet and others; Nierwall gets only the address), and opens it to sign the NEAR side of a fix. |
 
 ## Chains and NEAR Intents
 
 | | Networks |
 |---|---|
-| **Your wallets:** balances, portfolio mix, spare cash for fixes | NEAR, plus the ten EVM networks NEAR Intents can move money on: Ethereum, Base, Arbitrum, OP Mainnet, Polygon, BNB Chain, Gnosis, Avalanche, Berachain and Scroll |
+| **Your wallets:** balances, portfolio mix, spare cash for fixes | NEAR, the ten EVM networks NEAR Intents can move money on (Ethereum, Base, Arbitrum, OP Mainnet, Polygon, BNB Chain, Gnosis, Avalanche, Berachain and Scroll), and Solana, read only |
 | **Loans** | Rhea on NEAR |
-| **Moving money** in fixes and plans | Between any of those networks, through NEAR Intents |
+| **Moving money** in fixes and plans | Between any of those networks, through NEAR Intents; Solana wallets only receive |
 | **Checks before you sign** (the Snap) | All of the above, plus Celo, Linea, Sonic, Unichain, Mantle, zkSync Era and Aurora: 17 EVM networks and NEAR |
 
-An EVM wallet is one address, the same on every EVM network, so you add it once and Nierwall reads it on all ten.
+A Solana wallet is read only: Nierwall shows its SOL and the tokens NEAR Intents lists there (USDC and others), and
+NEAR Intents can send to it, but Nierwall has no Solana wallet to send from it with. An EVM wallet is one address,
+the same on every EVM network, so you add it once and Nierwall reads it on all ten.
 Add `"networks": ["base", "arb"]` to a wallet in `config/wallets.json` to read fewer: each network's node sees the
 address it's asked about.
 
@@ -225,7 +236,7 @@ the network where your EVM wallet holds the most USDC and builds "send it to NEA
 | NEAR AI Cloud (TEE) | Your messages and the position data looked up to answer them, with wallet nicknames instead of addresses |
 | OpenAI | Text used to build memory, with nicknames, never addresses |
 | Telegram | Alert text, at the detail level you choose (`TELEGRAM_DETAIL`) |
-| Public nodes for each network (publicnode.com, drpc.org as backup, mainnet.base.org), FastNEAR | Your wallet addresses, to read balances and loans; an EVM wallet on each network it's read on |
+| Public nodes for each network (publicnode.com, drpc.org as backup, mainnet.base.org, Solana's api.mainnet-beta.solana.com), FastNEAR | Your wallet addresses, to read balances and loans; an EVM wallet on each network it's read on. `SOLANA_RPC_URL` in `.env` puts your own Solana node first |
 | The same public nodes | A transaction the Snap checks, simulated on its network. Set `RPC_URL_<chain id>` in `.env` to use your own node first |
 | DefiLlama | Coin ids and token contract addresses, for prices and price history; never wallet addresses |
 | CoinGecko | Names you search for to find a coin, and the coin ids or token contracts DefiLlama has no price for; never wallet addresses |
@@ -246,6 +257,30 @@ You need Node 24+ and pnpm 10. The demo reads three public accounts (read-only; 
 real Rhea loan with its live health, and wallets on several networks. Then it sets two watches and simulates a NEAR -9% /
 ETH -10% drop. You see the alerts, the fixes with a live NEAR Intents quote, and the recovery. Everything except
 the price drop is live mainnet data.
+
+### Demo portfolio
+
+Turn on **Demo portfolio** in the shield to try Nierwall without your own wallets. It's a small, fixed portfolio
+valued at live prices, about $160 with 38% in stablecoins:
+
+| Demo wallet | Holds |
+|---|---|
+| Demo NEAR wallet | 7.5 NEAR and 18 USDC, and a Rhea loan: 12 NEAR of collateral against 20 USDC (health about 1.4) |
+| Demo Base wallet | 0.006 ETH and 22 USDC |
+| Demo Solana wallet | 0.3 SOL and 40 USDC |
+
+It starts with two rules: keep at least 30% in stablecoins, and keep at least 10 USDC in the Base wallet. Nothing can
+be sent from it. It's sized for one story: buying about $15 of ETH with the Base USDC breaks both rules (about $10
+breaks neither).
+
+- **Ask the orb:** "Buy $15 of ETH with my Base USDC". The plan check says the Base wallet would keep 7 USDC, under
+  the reserve, and stablecoins would fall to about 28%. The orb proposes swapping about 4.5 NEAR into ETH on Base
+  with NEAR Intents instead, which keeps both rules.
+- **Or swap in MetaMask** with Transaction safety on: the Snap shows both warnings in MetaMask's confirmation
+  screen and suggests paying with NEAR or SOL instead. In the demo, whichever account MetaMask sends from stands in
+  for the demo Base wallet.
+
+`pnpm demo --portfolio` runs the same story in a terminal.
 
 ### Full setup on your Mac
 
@@ -271,9 +306,10 @@ Every key is optional. Nierwall runs without them, with less:
 | `TELEGRAM_BOT_TOKEN` | Alerts on your phone (create a bot with @BotFather) | Alerts on the Mac only |
 | `COINGECKO_API_KEY` | A higher rate limit for finding coins by name (free demo key) | CoinGecko's public limit, plenty for one person. Prices come from DefiLlama, which needs no key |
 
-Then connect your wallets from the app: open Connections under the shield, or press ⌘⌥ and ask the orb. Addresses
-only: Nierwall never needs a key. A `config/wallets.json` from an earlier version is imported once. `pnpm demo` uses
-the wallets you connected, or public demo accounts until you have; there's nothing to sign with those.
+Then add your wallets from the shield: **Add wallet** to watch one by its address, or **Connect wallet** so Nierwall can also
+send it transactions to approve. You can also press ⌘⌥ and ask the orb. Nierwall never needs a key. A
+`config/wallets.json` from an earlier version is imported once, read-only. `pnpm demo` uses the wallets you added,
+or the demo portfolio until you have (`pnpm demo --portfolio` uses it either way); there's nothing to sign with it.
 
 | Try | How | You should see |
 |-----|-----|----------------|
@@ -283,13 +319,14 @@ the wallets you connected, or public demo accounts until you have; there's nothi
 | Watch any token | "Tell me if SOL drops below $70" | A watch on SOL's price, to confirm |
 | Set a target mix | "Keep at least 20% in stablecoins" | A mix watch, to confirm; the Snap and plans now respect it |
 | Ask for a plan | "Rebalance me toward 30% stablecoins" | Plan cards with health and mix before/after, cost, and **Review & sign** |
-| Send it to your wallet (needs a NEAR wallet you connected, best through Meteor's extension) | Ask "How do I make my Rhea loan safer?", then say "yes" when the orb asks | Meteor opens with the first step to approve; the orb says when it's done |
+| Send it to your wallet (needs the wallet connected: Meteor or another NEAR wallet, or MetaMask) | Ask "How do I make my Rhea loan safer?", then say "yes" when the orb asks | Your wallet opens with the first step to approve; the orb says when it's done |
+| Break a rule, on purpose | Turn on **Demo portfolio** in the shield, then say "Buy $15 of ETH with my Base USDC" | The check says it breaks the 30% stablecoin minimum and the 10 USDC reserve, and the orb proposes swapping NEAR into ETH on Base with NEAR Intents instead |
 | Simulate a crash | `pnpm simulate NEAR -9` (undo with `pnpm simulate off`) | An alert labeled SIMULATED on the Mac and in Telegram, with fixes |
 | Get alerts on your phone | Click "Get alerts on Telegram" in the panel, then tap Start in Telegram | "Linked" in Telegram |
 | Check a transaction | `pnpm snap`, then open `http://127.0.0.1:7420/snap/install` in a browser with MetaMask Flask | Nierwall's panel in MetaMask's confirmation screen |
 | Keep it running | `pnpm always-on` (undo with `sh ops/uninstall-always-on.sh`) | Brain, memory and app start at login and restart if they crash |
 
-Tests: `pnpm test` runs 70 brain tests, 4 of them against mainnet (`OFFLINE=1 pnpm test` skips those), and `apps/mac/scripts/check.sh` checks the voice turn-taking.
+Tests: `pnpm test` runs 76 brain tests, 4 of them against mainnet (`OFFLINE=1 pnpm test` skips those), and `apps/mac/scripts/check.sh` checks the voice turn-taking.
 
 ## Status
 
@@ -319,8 +356,9 @@ The full tracker is in [docs/PROGRESS.md](docs/PROGRESS.md). The original design
 - Checks pause while your Mac sleeps or is offline, because the brain runs on your Mac.
 - Withdrawing Rhea collateral opens the Rhea app instead of building the transaction, since it needs Rhea's live
   price data. Repaying and adding collateral are built and signed in your wallet.
-- Wallets are read on NEAR and the ten EVM networks above, for the tokens NEAR Intents lists. Solana, Bitcoin and
-  other non-EVM chains, and EVM networks NEAR Intents added recently (such as Monad), aren't counted yet.
+- Wallets are read on NEAR, the ten EVM networks above and Solana, for the tokens NEAR Intents lists. Bitcoin and
+  other chains, and EVM networks NEAR Intents added recently (such as Monad), aren't counted yet. Solana wallets are
+  read only.
 - Loans: Rhea only. Aave support was taken out for now, to keep the focus on NEAR.
 - Installing a local Snap, and MetaMask's full-screen critical warning, need MetaMask Flask.
 
@@ -331,7 +369,7 @@ The full tracker is in [docs/PROGRESS.md](docs/PROGRESS.md). The original design
 | `apps/brain` | The always-on brain: readers, watches, planner, local API, Telegram, NEAR AI agent, Snap analysis |
 | `apps/mac` | The menu-bar app (Swift package) |
 | `apps/snap` | The MetaMask Snap |
-| `apps/sign` | The local review-and-sign page |
+| `apps/sign` | The local page that connects wallets and hands each step of a fix to them |
 | `services/memory` | The memory service (Graphiti behind a small FastAPI app) |
 | `ops` | launchd setup for running 24/7 |
 | `docs` | Design plan and progress tracker |

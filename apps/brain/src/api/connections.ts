@@ -1,23 +1,24 @@
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import type { Hono } from "hono";
 import { z } from "zod";
 import type { Brain } from "../brain.js";
-import { EVM_NETWORKS, ROOT } from "../config.js";
-import { walletAppName } from "../connections.js";
+import { EVM_NETWORKS } from "../config.js";
+import { isConnected, walletAppName } from "../connections.js";
+import { isDemoWallet } from "../demo.js";
+import { servePage } from "../sign/routes.js";
 
-const PAGE = resolve(ROOT, "apps/sign/dist/index.html");
-const CSP = "default-src 'self'; script-src 'self' https://raw.githubusercontent.com https://*.hot-labs.org; frame-src https: ; connect-src *; style-src 'self' 'unsafe-inline'; img-src * data:";
-
-/** What's connected, for the app's Connections view: your wallets (with any Rhea loan found), and what's turned on. */
+/**
+ * The app's wallets view: your wallets (with any Rhea loan found), which of them are connected and can be sent
+ * transactions, and what's turned on.
+ */
 export function publicConnections(brain: Brain) {
   const positions = brain.latestSnapshot()?.positions ?? [];
-  const { wallets, demo, transactionSafety } = brain.connections;
+  const { demo, transactionSafety } = brain.connections;
+  // While the demo portfolio stands in for yours, its wallets are listed, marked as the demo.
   return {
-    wallets: wallets.map((w) => {
+    wallets: brain.wallets.wallets.map((w) => {
       const loan = positions.find((p) => p.walletLabel === w.label);
       return {
-        label: w.label, chain: w.chain, address: w.address, app: walletAppName(w.via), networks: w.networks ?? null,
+        label: w.label, chain: w.chain, address: w.address, app: walletAppName(w.via), connected: isConnected(w), demo: isDemoWallet(w), networks: w.networks ?? null,
         rhea: loan ? { healthFactor: loan.healthFactor, collateralUsd: Math.round(loan.collateralUsd), debtUsd: Math.round(loan.debtUsd) } : null,
       };
     }),
@@ -27,23 +28,30 @@ export function publicConnections(brain: Brain) {
   };
 }
 
-const WalletInput = z.object({
+/** A wallet typed into the app: watched by address, never sent anything. */
+const TypedWallet = z.object({
   address: z.string().min(2).max(100),
   label: z.string().max(40).optional(),
-  via: z.string().max(40).optional(),
   networks: z.array(z.enum(EVM_NETWORKS)).min(1).optional(),
 });
 
-/** Connections: /api/* needs the Nierwall token; /connect/<one-time token> is the local page that adds a wallet. */
+/** A wallet connected on the page: the account or address, and the wallet app it came from (a NEAR Connect id, or "metamask"). */
+const ConnectedWallet = z.object({
+  address: z.string().min(2).max(100),
+  label: z.string().max(40).optional(),
+  via: z.string().min(1).max(40).refine((v) => v !== "typed", "A connected wallet names its wallet app."),
+});
+
+/** Wallets: /api/* needs the Nierwall token; /connect/<one-time token> is the local page that connects a wallet. */
 export function registerConnectionRoutes(app: Hono, brain: Brain) {
   app.get("/api/connections", (c) => c.json(publicConnections(brain)));
 
   app.post("/api/wallets", async (c) => {
     try {
-      const wallet = await brain.addWallet(WalletInput.parse(await c.req.json()));
+      const wallet = await brain.addWallet({ ...TypedWallet.parse(await c.req.json()), via: "typed" });
       return c.json({ wallet: wallet.label, connections: publicConnections(brain) });
     } catch (e) {
-      return c.json({ error: String(e instanceof Error ? e.message : e) }, 400);
+      return c.json({ error: e instanceof z.ZodError ? "Type a NEAR account (like you.near) or a 0x address." : String(e instanceof Error ? e.message : e) }, 400);
     }
   });
 
@@ -61,19 +69,17 @@ export function registerConnectionRoutes(app: Hono, brain: Brain) {
 
   app.get("/connect/:token", (c) => {
     if (!brain.connectLinks.valid(c.req.param("token"))) return c.text("This link has expired. Ask Nierwall to connect a wallet again.", 404);
-    if (!existsSync(PAGE)) return c.text("Build the page first: pnpm --filter @guardian/sign build", 500);
-    return c.html(readFileSync(PAGE, "utf8"), 200, { "cache-control": "no-store", "content-security-policy": CSP });
+    return servePage(c);
   });
 
-  // The page sends only an address it read from the wallet: no keys, and no signature is ever asked for.
+  // The page sends only the account it read from the wallet: no keys, and no signature is ever asked for.
   app.post("/connect/:token/wallet", async (c) => {
     if (!brain.connectLinks.valid(c.req.param("token"))) return c.json({ error: "This link has expired." }, 404);
     try {
-      const input = WalletInput.pick({ address: true, via: true, label: true }).parse(await c.req.json());
-      const wallet = await brain.addWallet(input);
+      const wallet = await brain.addWallet(ConnectedWallet.parse(await c.req.json()));
       return c.json({ wallet: wallet.label, chain: wallet.chain });
     } catch (e) {
-      return c.json({ error: String(e instanceof Error ? e.message : e) }, 400);
+      return c.json({ error: e instanceof z.ZodError ? "The wallet didn't share a usable account." : String(e instanceof Error ? e.message : e) }, 400);
     }
   });
 }

@@ -1,7 +1,8 @@
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
-import { FIXTURE_WALLETS, type EvmNetwork, type Wallet, type WalletsConfig } from "./config.js";
+import { type EvmNetwork, type Wallet, type WalletsConfig } from "./config.js";
 import { ConnectLinks, defaultLabel, MAX_WALLETS, nearAccountExists, NO_CONNECTIONS, parseAddress, type Connections } from "./connections.js";
+import { DEMO_RULES, DEMO_WALLETS } from "./demo.js";
 import { logger } from "./log.js";
 import { DEFAULT_PREFS, fixesFor, type PlannerPrefs } from "./planner/fixes.js";
 import { Portfolio, type SnapshotWithDetail } from "./portfolio.js";
@@ -9,7 +10,7 @@ import { Scenario, scenarioLabel } from "./scenario.js";
 import { coinPrices, volatility } from "./sources/coins.js";
 import { Store } from "./store.js";
 import type { Alert, Incident, Severity, Snapshot } from "./types.js";
-import { combineSeverity, evaluate, isNearLimit, type Evaluation, type SeverityJudgment } from "./watches/engine.js";
+import { combineSeverity, describeWatch, evaluate, isNearLimit, type Evaluation, type SeverityJudgment } from "./watches/engine.js";
 
 export type { SeverityJudgment };
 
@@ -49,6 +50,7 @@ export class Brain extends EventEmitter {
   constructor(readonly store: Store) {
     super();
     this.conn = { ...NO_CONNECTIONS, ...(store.kvGet<Connections>("connections") ?? {}) };
+    this.syncDemoRules();
     this.portfolio = new Portfolio(() => this.wallets);
     this.scenario = new Scenario(store);
     this.ensureSystemWatches();
@@ -60,32 +62,41 @@ export class Brain extends EventEmitter {
     return this.conn;
   }
 
-  /** The wallets Nierwall watches: yours, or the demo accounts while you try it, or none. */
+  /** The wallets Nierwall watches: yours, or the demo portfolio while you try it, or none. */
   get wallets(): WalletsConfig {
     const { wallets, demo } = this.conn;
-    return { wallets: wallets.length ? wallets : demo ? FIXTURE_WALLETS.wallets : [] };
+    return { wallets: wallets.length ? wallets : demo ? DEMO_WALLETS : [] };
   }
 
-  /** True while the public demo accounts stand in for yours: there's nothing to sign with them. */
+  /** True while the demo portfolio stands in for yours: there's nothing to sign with it. */
   get usingDemo(): boolean {
     return !this.conn.wallets.length && this.conn.demo;
   }
 
   /**
-   * Adds a wallet to watch: a NEAR account (it must exist) or a 0x address, connected through a wallet app or typed.
-   * Read-only: Nierwall only ever has the address.
+   * Adds a wallet: a NEAR account (it must exist) or a 0x address. Typed in, it's only read. Connected through its
+   * wallet app (`via`: a NEAR wallet, or MetaMask), Nierwall can also send it transactions to approve; connecting an
+   * address you already added upgrades it. Nierwall only ever has the address.
    */
   async addWallet(input: { address: string; label?: string; via?: string; networks?: EvmNetwork[] }): Promise<Wallet> {
     const parsed = parseAddress(input.address);
     if ("error" in parsed) throw new Error(parsed.error);
+    const via = input.via ?? "typed";
     const taken = this.conn.wallets.map((w) => w.label);
     const existing = this.conn.wallets.find((w) => w.chain === parsed.chain && w.address.toLowerCase() === parsed.address.toLowerCase());
-    if (existing) return existing;
+    if (existing) {
+      if (via === "typed" || existing.via === via) return existing;
+      const upgraded: Wallet = { ...existing, via };
+      this.conn = { ...this.conn, wallets: this.conn.wallets.map((w) => (w === existing ? upgraded : w)) };
+      this.store.addEvent("wallet_connected", { label: upgraded.label, chain: upgraded.chain, via });
+      this.connectionsChanged();
+      return upgraded;
+    }
     if (this.conn.wallets.length >= MAX_WALLETS) throw new Error(`Nierwall watches up to ${MAX_WALLETS} wallets. Remove one first.`);
     if (parsed.chain === "near" && !(await nearAccountExists(parsed.address))) throw new Error(`There's no NEAR account called ${parsed.address}.`);
     const label = input.label?.trim().slice(0, 40) || defaultLabel(parsed.chain, taken);
     if (taken.some((t) => t.toLowerCase() === label.toLowerCase())) throw new Error(`You already have a wallet called "${label}". Pick another name.`);
-    const wallet: Wallet = { label, chain: parsed.chain, address: parsed.address, role: "", via: input.via ?? "typed", ...(input.networks ? { networks: input.networks } : {}) };
+    const wallet: Wallet = { label, chain: parsed.chain, address: parsed.address, role: "", via, ...(input.networks ? { networks: input.networks } : {}) };
     this.conn = { ...this.conn, wallets: [...this.conn.wallets, wallet] };
     this.store.addEvent("wallet_connected", { label, chain: wallet.chain, via: wallet.via });
     this.connectionsChanged();
@@ -108,12 +119,21 @@ export class Brain extends EventEmitter {
     return this.conn;
   }
 
-  /** A one-time link to the local page where the user picks Meteor, MetaMask or another wallet to connect. */
+  /** A one-time link to the local page where the user connects a NEAR wallet (Meteor or another) or MetaMask in their browser. */
   connectLink(): string {
     return `http://127.0.0.1:${this.apiPort}/connect/${this.connectLinks.create()}`;
   }
 
+  /** The demo's own rules (a stablecoin minimum, a USDC reserve) exist only while the demo portfolio stands in for yours. */
+  private syncDemoRules() {
+    const rules = this.store.listWatches().filter((w) => w.source === "demo");
+    if (!this.usingDemo) return rules.forEach((w) => this.store.deleteWatch(w.id));
+    if (rules.length) return;
+    for (const r of DEMO_RULES) this.store.newWatch({ kind: r.kind, label: describeWatch(r.kind, r.params), params: r.params, source: "demo", status: "active" });
+  }
+
   private connectionsChanged() {
+    this.syncDemoRules();
     this.store.kvSet("connections", this.conn);
     this.portfolio.forgetHoldings();
     this.emit("connections", this.conn);

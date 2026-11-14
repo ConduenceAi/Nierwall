@@ -46,7 +46,7 @@ final class VoiceSession: @unchecked Sendable {
 
     private static let locale = Locale(identifier: "en-US")
     /// Domain words that generic dictation tends to get wrong.
-    private static let vocabulary = ["Nierwall", "Rhea", "USDC", "NEAR", "NEAR Intents", "health factor", "wNEAR", "Base", "MetaMask"]
+    private static let vocabulary = ["Nierwall", "Rhea", "USDC", "NEAR", "NEAR Intents", "health factor", "wNEAR", "Base", "MetaMask", "Meteor"]
 
     init() {
         let settings = SpeechOutput.voice?.audioFileSettings ?? [:]

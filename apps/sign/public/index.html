@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Nierwall · Review and sign</title>
   <style>
-    :root { --bg:#F2F4F7; --surface:#fff; --ink:#101828; --muted:#657287; --rule:#D7DDE6; --accent:#2446D8; --near:#007A5E; --ok:#2E7D32; --bad:#BE2F3A; --warn:#A86400; color-scheme: light; }
-    @media (prefers-color-scheme: dark) { :root { --bg:#0B1019; --surface:#121927; --ink:#E8EDF5; --muted:#8794A9; --rule:#243046; --accent:#8099FF; --near:#3DDCA4; --ok:#6FCF73; --bad:#F06A75; --warn:#EBA544; color-scheme: dark; } }
+    /* Nierwall blue (#3B82F6), black and white. Red only for errors and failed checks. */
+    :root { --bg:#F5F5F5; --surface:#FFFFFF; --ink:#000000; --muted:#666666; --rule:#E0E0E0; --accent:#3B82F6; --near:#3B82F6; --ok:#3B82F6; --bad:#DC2626; --warn:#3B82F6; color-scheme: light; }
+    @media (prefers-color-scheme: dark) { :root { --bg:#000000; --surface:#0D0D0D; --ink:#FFFFFF; --muted:#A3A3A3; --rule:#262626; --accent:#3B82F6; --near:#3B82F6; --ok:#3B82F6; --bad:#F87171; --warn:#3B82F6; color-scheme: dark; } }
     * { box-sizing: border-box; }
     body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; }
     main { max-width: 640px; margin: 0 auto; padding: 32px 18px 60px; }

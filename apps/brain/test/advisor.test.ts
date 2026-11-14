@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { allocationOf, assetClass, checkPlan, type PlanContext, type PlanInput } from "../src/advisor/plans.js";
 import type { Network } from "../src/config.js";
+import { signBlocker } from "../src/connections.js";
 import type { Holding } from "../src/holdings.js";
 import { parseTokenList, type TokenInfo } from "../src/tokens.js";
 import type { LendingPosition, Watch } from "../src/types.js";
@@ -124,6 +125,19 @@ describe("plan checker", () => {
     expect(unclear.ok).toBe(false);
   });
 
+  it("sends only from connected wallets: one added by address is only read", async () => {
+    const actions: PlanInput["actions"] = [
+      { type: "move", fromWallet: "Cash", toWallet: "Savings", token: "USDC", amount: 3000 },
+      { type: "repay", wallet: "Savings", protocol: "rhea", token: "USDC", amount: 2900 },
+    ];
+    const readOnly = await checkPlan(plan(actions), ctx({ canSign: signBlocker }));
+    expect(readOnly.ok).toBe(false);
+    if (!readOnly.ok) expect(readOnly.errors).toEqual([expect.stringMatching(/Step 1: Cash was added by address.*MetaMask/), expect.stringMatching(/Step 2: Savings was added by address.*Meteor/)]);
+    const connected = ctx({ canSign: signBlocker });
+    connected.wallets = { wallets: connected.wallets.wallets.map((w) => ({ ...w, via: w.chain === "evm" ? "metamask" : "meteor-wallet" })) };
+    expect((await checkPlan(plan(actions), connected)).ok).toBe(true);
+  });
+
   it("keeps gas money: a percent of native NEAR leaves some behind", async () => {
     const r = await checkPlan(plan([{ type: "swap", wallet: "Savings", from: "NEAR", to: "USDC", percent: 100 }]), ctx());
     expect(r.ok).toBe(true);
@@ -182,17 +196,21 @@ describe("plan checker across EVM networks", () => {
 });
 
 describe("NEAR Intents token list", () => {
-  it("covers NEAR and the EVM networks, skipping deprecated entries and other chains", () => {
+  it("covers NEAR, the EVM networks and Solana, skipping deprecated entries and other chains", () => {
     const usdcArb = "0xAF88d065e77c8cC2239327C5EDb3A432268e5831";
     const list = parseTokenList([
       { assetId: "nep141:eth.omft.near", blockchain: "eth", symbol: "ETH", decimals: 18, price: 2000 },
       { assetId: "nep141:arb-usdc.omft.near", blockchain: "arb", symbol: "USDC", decimals: 6, contractAddress: usdcArb, price: 1 },
       { assetId: "nep245:bnb-old", blockchain: "bsc", symbol: "BNB(DEPRECATED)", decimals: 18, price: 600 },
       { assetId: "nep141:sol.omft.near", blockchain: "sol", symbol: "SOL", decimals: 9, price: 80 },
+      { assetId: "nep141:sol-usdc.omft.near", blockchain: "sol", symbol: "USDC", decimals: 6, contractAddress: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", price: 1 },
+      { assetId: "nep141:btc.omft.near", blockchain: "btc", symbol: "BTC", decimals: 8, price: 67000 },
       { assetId: "nep141:wrap.near", blockchain: "near", symbol: "wNEAR", decimals: 24, contractAddress: "wrap.near", price: 3.5 },
     ]);
-    expect(list.map((t) => `${t.chain}:${t.symbol}`)).toEqual(["eth:ETH", "arb:USDC", "near:wNEAR", "near:NEAR"]);
+    expect(list.map((t) => `${t.chain}:${t.symbol}`)).toEqual(["eth:ETH", "arb:USDC", "sol:SOL", "sol:USDC", "near:wNEAR", "near:NEAR"]);
     expect(list.find((t) => t.chain === "arb")!.contract).toBe(usdcArb.toLowerCase());
+    // A Solana mint is base58, so its case is kept.
+    expect(list.find((t) => t.chain === "sol" && t.symbol === "USDC")!.contract).toBe("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
   });
 });
 

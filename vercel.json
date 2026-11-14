@@ -1,0 +1,14 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "landing": {
+      "root": "apps/landing",
+      "installCommand": "echo \"The landing page has no dependencies\"",
+      "buildCommand": "node scripts/build.mjs",
+      "outputDirectory": "dist"
+    }
+  },
+  "rewrites": [
+    { "source": "/(.*)", "destination": { "service": "landing" } }
+  ]
+}

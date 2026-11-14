@@ -4,6 +4,7 @@ import { assetClass, type Plan, type PlanStep } from "../advisor/plans.js";
 import type { Brain } from "../brain.js";
 import { evmChain, evmClient, evmNetwork, networkName } from "../chains.js";
 import { ADDRESSES, type EvmNetwork, type Network, type Wallet } from "../config.js";
+import { isConnected, walletAppName } from "../connections.js";
 import { quote, swapStatus, type Quote } from "../intents/oneclick.js";
 import { logger } from "../log.js";
 import { usdcOn } from "../planner/fixes.js";
@@ -43,6 +44,9 @@ export interface SignStep {
   wallet: string | null;
   /** Address/account that must sign (shown to the user, checked in the page). */
   expectedSigner: string | null;
+  /** The wallet app the signer was connected with ("meteor-wallet", "metamask"), and its name for people. */
+  walletApp?: string;
+  walletAppName?: string;
   evmTx?: EvmTx;
   nearTx?: { receiverId: string; actions: NearAction[] };
   /** NEAR Intents deposit address this step pays, or delivery this step waits for. */
@@ -169,7 +173,7 @@ export class SignSessions {
   }
 
   private newSession(id: string, title: string, healthBefore: number | null, healthAfter: number | null): SignSession {
-    if (this.brain.usingDemo) throw new Error("These are public demo accounts, so there's nothing for you to sign. Connect your own wallet in Nierwall to review and sign fixes.");
+    if (this.brain.usingDemo) throw new Error("This is the demo portfolio, so there's nothing to sign. Add and connect your own wallet in Nierwall to review and sign fixes.");
     return {
       token: randomBytes(18).toString("base64url"), fixId: id, title, createdAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
@@ -183,6 +187,15 @@ export class SignSessions {
     return w;
   }
 
+  /** A wallet that signs a step: only one connected through its wallet app, which the step then opens. */
+  private signer(label: string): Wallet & { app: { walletApp: string; walletAppName: string } } {
+    const w = this.wallet(label);
+    if (!isConnected(w)) {
+      throw new Error(`${w.label} was added by address, so Nierwall only reads it. Connect it in Nierwall (Connect a wallet) to send transactions through it.`);
+    }
+    return { ...w, app: { walletApp: w.via!, walletAppName: walletAppName(w.via) ?? w.via! } };
+  }
+
   /** Creates a one-time session for a fix. Cross-chain fixes get a real (wet) quote here, after checks pass. */
   async create(fix: FixOption): Promise<SignSession> {
     const plan = fix.plan;
@@ -190,8 +203,8 @@ export class SignSessions {
     const session = this.newSession(fix.id, fix.title, fix.healthBefore, fix.healthAfter);
 
     if (plan.type === "rhea_repay_from_evm" || plan.type === "rhea_repay_from_base") {
-      const from = this.wallet(plan.fromWallet);
-      const to = this.wallet(plan.toWallet);
+      const from = this.signer(plan.fromWallet);
+      const to = this.signer(plan.toWallet);
       const network = plan.fromChain ?? "base";
       const usdc = await usdcOn(network);
       const amountRaw = toRaw(plan.amountUsdc, usdc.decimals);
@@ -204,7 +217,7 @@ export class SignSessions {
       session.depositAddress = q.depositAddress;
       session.privacyNote = `This route links your ${networkName(network)} and NEAR addresses on-chain.`;
       session.steps.push({
-        id: "evm_send", kind: "evm", chain: network, wallet: from.label, expectedSigner: getAddress(from.address), state: "ready",
+        id: "evm_send", kind: "evm", chain: network, wallet: from.label, expectedSigner: getAddress(from.address), state: "ready", ...from.app,
         title: `Send ${q.amountInFormatted} USDC on ${networkName(network)}`,
         detail: `From ${from.label} to the NEAR Intents deposit address. Valid until ${q.deadline}.`,
         evmTx: evmSendTx(usdc, amountRaw, q.depositAddress!),
@@ -216,26 +229,26 @@ export class SignSessions {
         detail: `To ${to.label}, at least ${(Number(q.minAmountOut) / 1e6).toFixed(2)} USDC${q.timeEstimate ? `, usually within ${q.timeEstimate}s` : ""}.`,
       });
       session.steps.push({
-        id: "near_repay", kind: "near", chain: "near", wallet: to.label, expectedSigner: to.address, state: "waiting", repayDelivered: true,
+        id: "near_repay", kind: "near", chain: "near", wallet: to.label, expectedSigner: to.address, state: "waiting", repayDelivered: true, ...to.app,
         title: "Repay USDC on Rhea",
-        detail: "Repays what arrived. Your NEAR wallet asks you to approve one transaction.",
+        detail: `Repays what arrived. ${to.app.walletAppName} asks you to approve one transaction.`,
         nearTx: await rheaRepayTx(ADDRESSES.near.usdc, BigInt(q.minAmountOut)),
       });
     } else if (plan.type === "rhea_repay") {
-      const w = this.wallet(plan.wallet);
+      const w = this.signer(plan.wallet);
       session.steps.push({
-        id: "near_repay", kind: "near", chain: "near", wallet: w.label, expectedSigner: w.address, state: "ready",
+        id: "near_repay", kind: "near", chain: "near", wallet: w.label, expectedSigner: w.address, state: "ready", ...w.app,
         title: `Repay ${plan.amountUsdc.toLocaleString("en-US")} USDC on Rhea`,
-        detail: "Your NEAR wallet asks you to approve one transaction.",
+        detail: `${w.app.walletAppName} asks you to approve one transaction.`,
         nearTx: await rheaRepayTx(ADDRESSES.near.usdc, BigInt(Math.round(plan.amountUsdc * 1e6))),
       });
     } else {
-      const w = this.wallet(plan.wallet);
+      const w = this.signer(plan.wallet);
       const near = (await tokenList()).find((t) => t.chain === "near" && !t.contract)!;
       session.steps.push({
-        id: "near_collateral", kind: "near", chain: "near", wallet: w.label, expectedSigner: w.address, state: "ready",
+        id: "near_collateral", kind: "near", chain: "near", wallet: w.label, expectedSigner: w.address, state: "ready", ...w.app,
         title: `Add ${plan.amountNear.toLocaleString("en-US")} NEAR as collateral on Rhea`,
-        detail: "Wraps the NEAR and adds it as collateral in one transaction. Your NEAR wallet asks you to approve it.",
+        detail: `Wraps the NEAR and adds it as collateral in one transaction. ${w.app.walletAppName} asks you to approve it.`,
         nearTx: await rheaCollateralTx(near, ADDRESSES.near.wnear, toRaw(plan.amountNear, near.decimals), w.address),
       });
     }
@@ -256,9 +269,14 @@ export class SignSessions {
     const push = (step: Omit<SignStep, "id" | "state">) => session.steps.push({ ...step, id: `s${++n}`, state: n === 1 ? "ready" : "waiting" } as SignStep);
 
     for (const ps of plan.steps) {
+      // Every step that sends goes through the wallet app its wallet was connected with; a step done by hand needs none.
+      const signerApp = ps.execution === "manual" ? null : this.signer(ps.wallet).app;
+      const app = signerApp ?? {};
+      const approveIn = signerApp?.walletAppName ?? "Your wallet";
       const w = this.wallet(ps.wallet);
       const amountRaw = toRaw(ps.amount, ps.token.decimals);
       const signer = w.chain === "evm" ? getAddress(w.address) : w.address;
+      if (ps.chain === "sol") throw new Error("Nierwall can't send from Solana wallets.");
       const kind = ps.chain === "near" ? "near" : "evm";
 
       if (ps.type === "swap" || ps.type === "move") {
@@ -266,7 +284,7 @@ export class SignSessions {
         if (to.label !== w.label) links.add(`${w.label} and ${to.label}`);
         if (ps.route === "transfer") {
           push({
-            kind, chain: ps.chain, wallet: w.label, expectedSigner: signer,
+            kind, chain: ps.chain, wallet: w.label, expectedSigner: signer, ...app,
             title: `Send ${fmt(ps.amount)} ${ps.token.symbol} to ${to.label}`, detail: `A plain transfer between your wallets on ${networkName(ps.chain)}.`,
             ...(kind === "evm" ? { evmTx: evmSendTx(ps.token, amountRaw, to.address) } : { nearTx: nearSendTx(ps.token, amountRaw, w.address, to.address, false) }),
           });
@@ -282,7 +300,7 @@ export class SignSessions {
         if (q.checks.some((c) => !c.ok)) throw new Error(`Step ${ps.n} quote failed checks: ${q.checks.filter((c) => !c.ok).map((c) => c.name).join(", ")}. Prices may have moved; ask for the plan again.`);
         const deposit = q.depositAddress!;
         push({
-          kind, chain: ps.chain, wallet: w.label, expectedSigner: signer, depositAddress: deposit, amountRaw: amountRaw.toString(),
+          kind, chain: ps.chain, wallet: w.label, expectedSigner: signer, depositAddress: deposit, amountRaw: amountRaw.toString(), ...app,
           title: `Send ${fmt(ps.amount)} ${ps.token.symbol}${kind === "evm" ? ` on ${networkName(ps.chain)}` : ""} to NEAR Intents`,
           detail: `From ${w.label}${!ps.token.contract && kind === "near" ? " (wrapped to wNEAR in the same transaction)" : ""}. Valid until ${q.deadline}.`,
           ...(kind === "evm" ? { evmTx: evmSendTx(ps.token, amountRaw, deposit) } : { nearTx: nearSendTx(ps.token, amountRaw, w.address, deposit, true) }),
@@ -298,15 +316,15 @@ export class SignSessions {
       // Rhea: repay and add collateral are built here; withdrawing collateral is done in the Rhea app.
       if (ps.type === "repay" && ps.token.contract) {
         push({
-          kind: "near", chain: "near", wallet: w.label, expectedSigner: w.address,
-          title: `Repay ${fmt(ps.amount)} ${ps.token.symbol} on Rhea`, detail: "Your NEAR wallet asks you to approve one transaction.",
+          kind: "near", chain: "near", wallet: w.label, expectedSigner: w.address, ...app,
+          title: `Repay ${fmt(ps.amount)} ${ps.token.symbol} on Rhea`, detail: `${approveIn} asks you to approve one transaction.`,
           nearTx: await rheaRepayTx(ps.protocolToken!, amountRaw),
         });
       } else if (ps.type === "add_collateral") {
         push({
-          kind: "near", chain: "near", wallet: w.label, expectedSigner: w.address,
+          kind: "near", chain: "near", wallet: w.label, expectedSigner: w.address, ...app,
           title: `Add ${fmt(ps.amount)} ${ps.token.symbol} as collateral on Rhea`,
-          detail: `${ps.token.contract ? "" : "Wraps the NEAR and adds it in one transaction. "}Your NEAR wallet asks you to approve it.`,
+          detail: `${ps.token.contract ? "" : "Wraps the NEAR and adds it in one transaction. "}${approveIn} asks you to approve it.`,
           nearTx: await rheaCollateralTx(ps.token, ps.protocolToken!, amountRaw, w.address),
         });
       } else {

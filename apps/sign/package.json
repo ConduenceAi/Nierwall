@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Local signing page: MetaMask (EIP-6963) for Base, NEAR Connect for NEAR. Nierwall never holds keys.",
+  "description": "Local review and connect page: NEAR wallets through NEAR Connect, MetaMask (EIP-6963) for EVM steps. Nierwall never holds keys.",
   "scripts": {
     "build": "esbuild src/main.ts --bundle --format=esm --platform=browser --target=es2022 --minify --outfile=dist/sign.js && cp public/index.html dist/index.html",
     "typecheck": "tsc --noEmit -p ."

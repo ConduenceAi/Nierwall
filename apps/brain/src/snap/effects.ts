@@ -163,7 +163,7 @@ export async function currentMix(brain: Brain): Promise<{ before: Allocation; ho
 }
 
 /** Simulates an EVM transaction and checks its effects. Null when the network's node can't simulate it. */
-export async function txEffects(brain: Brain, chain: EvmChain, tx: { from: string; to: string | null; data: string; value?: string }, contractCall: boolean): Promise<{ findings: SnapFinding[]; rows: Array<{ label: string; value: string }> } | null> {
+export async function txEffects(brain: Brain, chain: EvmChain, tx: { from: string; to: string | null; data: string; value?: string }, contractCall: boolean, fromLabel: string | null = null): Promise<{ findings: SnapFinding[]; rows: Array<{ label: string; value: string }> } | null> {
   // The first node that can simulate it answers; a node that's down or doesn't support simulation falls through.
   let sim: Awaited<ReturnType<typeof simulateTransfers>> | null = null;
   for (const rpc of chain.rpcs) {
@@ -193,7 +193,26 @@ export async function txEffects(brain: Brain, chain: EvmChain, tx: { from: strin
 
   const { before, holdings } = await currentMix(brain);
   const effects = effectFindings(changes, before, brain.store.listWatches("active"), holdings, contractCall);
-  return { findings: [...hidden, ...effects.findings], rows: effects.rows };
+  const reserves = fromLabel ? reserveFindings(brain, fromLabel, changes) : [];
+  return { findings: [...hidden, ...effects.findings, ...reserves], rows: effects.rows };
+}
+
+/** Reserve rules (keep at least N of a token) for the sending wallet: what it would keep after this transaction. */
+export function reserveFindings(brain: Brain, walletLabel: string, changes: Change[]): SnapFinding[] {
+  const out: SnapFinding[] = [];
+  const same = (a: string, b: string) => a.toUpperCase() === b.toUpperCase();
+  for (const w of brain.store.listWatches("active")) {
+    const p = w.params as { walletLabel?: string; symbol?: string; amount?: number };
+    if (w.kind !== "balance_min" || p.walletLabel !== walletLabel || !p.symbol) continue;
+    const change = changes.filter((c) => same(c.symbol, p.symbol!)).reduce((sum, c) => sum + c.amount, 0);
+    const held = brain.latestSnapshot()?.balances.filter((b) => b.walletLabel === walletLabel && same(b.symbol, p.symbol!));
+    if (change >= 0 || !held?.length) continue;
+    const before = held.reduce((sum, b) => sum + b.amount, 0);
+    if (before + change < Number(p.amount)) {
+      out.push({ severity: "warning", title: `${walletLabel} would drop below your ${p.symbol} reserve`, detail: `${before.toFixed(2)} → ${(before + change).toFixed(2)} ${p.symbol} (minimum ${p.amount}).` });
+    }
+  }
+  return out;
 }
 
 export { NATIVE };

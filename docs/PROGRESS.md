@@ -1,6 +1,6 @@
 # Progress
 
-Last updated: 2026-11-13 (night, IST). Deadline: 2026-11-14 23:59 UTC. Judging 16 Nov, results 18 Nov.
+Last updated: 2026-11-14 (afternoon, IST). Deadline: 2026-11-14 23:59 UTC. Judging 16 Nov, results 18 Nov.
 
 | # | Component | Status | Notes |
 |---|-----------|--------|-------|
@@ -12,7 +12,7 @@ Last updated: 2026-11-13 (night, IST). Deadline: 2026-11-14 23:59 UTC. Judging 1
 | 6 | NEAR AI agent | Done, live-tested | Setup, wallets, floors and planning answered live on NEAR AI, end to end encrypted, with TEE attestation for the gateway and both models; 14 tools, number check with one self-correction, seed-phrase tripwire, template fallback |
 | 7 | Fixes, NEAR Intents quotes, review and signing page | Done, signing untested | Live 1Click quotes with 5 checks; cash for a Rhea fix comes from whichever EVM network holds the most USDC; MetaMask is switched to each step's network. Signing needs your wallets (test with a tiny amount); blocked on demo accounts |
 | 8 | MetaMask Snap (pre-sign checks) | Built, untested in MetaMask | Analysis tested with real calldata; needs MetaMask Flask in your browser |
-| 9 | Mac menu-bar app (Swift) | Built, launched | Press ⌘⌥ for the Siri-style orb (top center, no background, edge glow): a hands-free conversation where a pause sends, it answers and listens again, you can talk over it, and Esc or silence ends it. Turn-taking checked offline (`apps/mac/scripts/check.sh`); voice, echo cancellation, overlay and notifications still need you at the screen |
+| 9 | Mac menu-bar app (Swift) | Built, launched | Press ⌘⌥ for the Siri-style orb (centered a fifth of the way down, no background, edge glow): a hands-free conversation where a pause sends, it answers and listens again, you can talk over it, and Esc or silence ends it. Turn-taking checked offline (`apps/mac/scripts/check.sh`); voice, echo cancellation, overlay and notifications still need you at the screen |
 | 10 | Always-on (launchd) + docs | Done | `pnpm always-on` installs it (you run it) |
 | 11 | Holdings, token watches, portfolio mix | Done, live-tested | Every token in every wallet: an EVM wallet on all ten EVM networks NEAR Intents supports (a batched read per network, with a backup node each), NEAR via FastNEAR; price watches for any coin, priced by DefiLlama; mix targets as watches |
 | 12 | Advisor (AI plans, Mac checks) | Checker live-tested, AI untested | Plans replayed against balances, loans and live quotes; review sessions built for swaps, moves and Rhea. AI sets floors, targets, alert severity and cost limits. Needs `NEAR_AI_API_KEY` to try the AI part |
@@ -23,14 +23,49 @@ Last updated: 2026-11-13 (night, IST). Deadline: 2026-11-14 23:59 UTC. Judging 1
 
 1. Put `NEAR_AI_API_KEY`, `OPENAI_API_KEY` and `TELEGRAM_BOT_TOKEN` in `.env` (never in the repo), then test chat,
    memory and Telegram.
-2. Add your wallets to `config/wallets.json` (gitignored).
+2. Add your wallets in the shield, and connect the ones Nierwall should send fixes to (NEAR wallet or MetaMask).
 3. Try the Snap in a MetaMask Flask browser profile.
 4. Try one real fix with a tiny amount.
-5. Try voice and notifications on the Mac, then record the demo.
+5. Try voice and notifications on the Mac, then record the demo (the demo portfolio's story is in the README).
 6. Make the GitHub repo public before the deadline, then submit.
 
 ## Log
 
+- **2026-11-14 (evening)** Solana, read only, and a realistic demo. A Solana address can be added like any other:
+  SOL and the tokens NEAR Intents lists there (USDC and others) are read from public Solana nodes and priced, SOL
+  has its own slice in the portfolio mix, and NEAR Intents can send to a Solana wallet, but nothing is ever sent from
+  one. The demo is now a fixed portfolio at live prices, about $160: NEAR with a Rhea loan (health about 1.4), ETH and
+  USDC on Base, SOL and USDC on Solana, with two rules (30% in stablecoins, 10 USDC kept on Base). Buying about $15
+  of ETH with the Base USDC breaks both: the plan check rejects it and the AI proposes swapping NEAR into ETH on Base
+  with NEAR Intents instead; in MetaMask, the Snap warns about both, and its reserve rule now covers swaps, not only
+  transfers. `pnpm demo --portfolio` runs the story live; it matched those numbers. Asked on NEAR AI, the agent named both
+  broken rules with their numbers and proposed a checked $11.50 buy that keeps both (56 s). The shield now shows just
+  **Add wallet** (its fields open on click) and **Connect wallet**, each explained behind an (i), and its switches line
+  up. 76 brain tests pass.
+- **2026-11-14 (late afternoon)** Watching and sending are now separate, from feedback. In the shield you type a
+  wallet's address and a name to watch it (read-only: balances, loans, alerts). **Connect a wallet** opens the browser
+  page, where you pick Meteor or any other NEAR wallet from NEAR Connect's list, or MetaMask for EVM networks; only a
+  connected wallet can be sent fixes and swaps to approve, and connecting a watched address upgrades it. The plan
+  checker rejects a step that sends from a read-only wallet, the review page refuses one too, each step opens the
+  wallet app its wallet was connected with, and the AI asks which wallet to use when more than one could do it. Cards
+  for a read-only wallet show **Connect to send**. MetaMask signs EVM steps, with the NEAR Intents cross-chain fixes
+  and plans, and the Snap with its Transaction safety switch stays as it was. Checked: the connect page in headless
+  Chrome (11 NEAR wallets, no Ethereum Wallets entry; MetaMask says to install it when missing), the wallet API in
+  memory, and offscreen renders of the panel.
+- **2026-11-14 (mid-afternoon, later)** A new look, from feedback. The panel opens on your wallets; the chat is
+  behind the button at the top right, and opens on its own for an alert or an answer with something to click.
+  Everything is Nierwall blue (#3B82F6), black and white: the panel (white on black), the orb, the edge glow, the
+  menu-bar icon's alert state, and the connect, review and Snap install pages. Red is kept only for danger: a
+  critical alert, the liquidation end of the health gauge, a failed check. The orb is 25% bigger (80 pt), sits a
+  fifth of the way down the screen, and has a very thin silver rim with a shine that travels around it. Checked
+  in offscreen renders of the orb and both panel views.
+- **2026-11-14 (mid-afternoon)** Meteor is the only wallet to connect, for now. The connect page has one Meteor
+  button (MetaMask's is gone), and NEAR steps of a fix always go to Meteor; the orb names Meteor whenever a NEAR
+  wallet is connected. Typing a NEAR account or a 0x address still works, EVM steps still sign in MetaMask, and the
+  transaction-safety Snap is unchanged. Fixed a bug found while testing it in Chrome: the page's security policy
+  blocked the wallet's code, which NEAR Connect runs as inline scripts in a sandboxed frame, so Meteor never opened
+  on the connect or review page. Each load now gets a fresh nonce that NEAR Connect passes on; clicking Connect
+  Meteor opens Meteor's window (extension, web or phone).
 - **2026-11-14 (afternoon)** Nierwall starts empty, and the orb sets it up. No built-in wallets: you connect a wallet
   on a local page (Meteor, MetaMask or another; only the address is read) or by saying a NEAR account, and every
   NEAR wallet is checked for a Rhea loan. Demo accounts and transaction safety are off until turned on; the Snap says

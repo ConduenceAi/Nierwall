@@ -5,6 +5,7 @@ import type { Brain } from "../brain.js";
 import { publicConnections } from "../api/connections.js";
 import { networkName } from "../chains.js";
 import { EVM_NETWORKS } from "../config.js";
+import { isConnected, signBlocker } from "../connections.js";
 import { fixesFor } from "../planner/fixes.js";
 import { rheaAssets, rheaTokenBySymbol } from "../protocols/rhea.js";
 import { riskClass } from "../protocols/risk.js";
@@ -69,7 +70,7 @@ export const TOOL_DEFS = [
         "Kinds: health_below {positionId, threshold, target, reason} where threshold is the floor that raises an alert and target the health a fix restores " +
         "(choose both from asset_volatility and the user's goals; floor above 1.05, target above the floor); liq_distance {positionId, pct}; price_below / price_above {symbol, price}; " +
         "price_move {symbol, pct} (pct negative for a drop, measured from the current price); balance_min {walletLabel, symbol, amount}; " +
-        "allocation_min / allocation_max {cls: stable|ETH|BTC|NEAR|other, pct, reason}: a share of net worth the user wants to keep at least / at most. " +
+        "allocation_min / allocation_max {cls: stable|ETH|BTC|NEAR|SOL|other, pct, reason}: a share of net worth the user wants to keep at least / at most. " +
         "For ETH, NEAR or USDC use symbol. For any other token, call find_token first and pass coinId, symbol and name instead.",
       parameters: {
         type: "object",
@@ -122,8 +123,9 @@ export const TOOL_DEFS = [
         "repay / add_collateral / withdraw {wallet, protocol: rhea, token}. Give each step exactly one of amount (tokens), amountUsd, or percent " +
         "(of the available balance; for repay, of the debt; for withdraw, of that collateral). Use token symbols from get_portfolio. " +
         "An EVM wallet holds tokens on several networks: name them with chain/toChain (swap) or fromChain/toChain (move), using the chain values from get_portfolio; " +
-        "a swap or move can cross networks, even within one wallet. Left out, Nierwall uses the network where the wallet holds the most of that token. NEAR wallets are always near, and Rhea is on near. " +
-        "Set maxCostUsd to the most this plan is worth paying in fees and slippage, and costReason to why; plans that cost more are rejected.",
+        "a swap or move can cross networks, even within one wallet. Left out, Nierwall uses the network where the wallet holds the most of that token. NEAR wallets are always near, Solana wallets sol (they can receive but never send), and Rhea is on near. " +
+        "Set maxCostUsd to the most this plan is worth paying in fees and slippage, and costReason to why; plans that cost more are rejected. " +
+        "Only connected wallets can send a step (get_portfolio and get_connections show which); a step that sends from a wallet added by address is rejected.",
       parameters: {
         type: "object",
         properties: {
@@ -174,7 +176,7 @@ export const TOOL_DEFS = [
     type: "function" as const,
     function: {
       name: "get_connections",
-      description: "What the user has connected: wallets by nickname (NEAR or EVM, and the wallet app), any Rhea loan found in them, and whether transaction safety and the demo accounts are on. Nierwall starts with nothing connected.",
+      description: "The user's wallets by nickname: NEAR or EVM, whether each is connected (Nierwall can send it transactions to approve, through the named wallet app) or only read (added by address), any Rhea loan found in them, and whether transaction safety and the demo accounts are on. Nierwall starts with no wallets.",
       parameters: { type: "object", properties: {}, additionalProperties: false },
     },
   },
@@ -183,8 +185,8 @@ export const TOOL_DEFS = [
     function: {
       name: "connect_wallet",
       description:
-        "Add a wallet for Nierwall to watch (read-only: only the address, never keys). With a NEAR account the user typed or said (like you.near) or a 0x address they pasted, it's added directly. " +
-        "Without an address, a page opens in the browser where they pick Meteor, MetaMask or another wallet and Nierwall reads the address; tell them to look for it. " +
+        "Add a wallet. With a NEAR account the user said or typed (like you.near) or a 0x address they pasted, it's added read-only: Nierwall watches it but can't send it anything (they can also type it in the Nierwall panel). " +
+        "Without an address, a page opens in the browser where they connect a NEAR wallet (Meteor or another) or MetaMask; a connected wallet is one Nierwall can send transactions to for approval. Tell them to look for the page. " +
         "label is the nickname to call it; ask the user for one (e.g. Savings, Cash) unless they gave it. Never ask for seed phrases or private keys.",
       parameters: {
         type: "object",
@@ -206,8 +208,8 @@ export const TOOL_DEFS = [
     function: {
       name: "set_feature",
       description:
-        "Turn a feature on or off when the user asks. transaction_safety: Nierwall checks every transaction in MetaMask before they sign it (it also needs the Nierwall Snap installed in MetaMask Flask; the result says how). " +
-        "demo_accounts: public read-only accounts to try Nierwall without connecting a wallet; ignored once a wallet is connected.",
+        "Turn a feature on or off when the user asks. transaction_safety: Nierwall checks every transaction in MetaMask before they sign it, against their rules (it also needs the Nierwall Snap installed in MetaMask Flask; the result says how). " +
+        "demo_accounts: a demo portfolio to try Nierwall without adding a wallet; ignored once a wallet is added.",
       parameters: {
         type: "object",
         properties: { feature: { type: "string", enum: ["transaction_safety", "demo_accounts"] }, on: { type: "boolean" } },
@@ -270,13 +272,14 @@ export async function runTool(name: string, args: Record<string, unknown>, ctx: 
   const watches = brain.store.listWatches();
   switch (name) {
     case "get_portfolio": {
-      if (!brain.wallets.wallets.length) return { wallets: [], note: "Nothing is connected yet. Offer to connect a wallet (connect_wallet), or the demo accounts to try it (set_feature)." };
+      if (!brain.wallets.wallets.length) return { wallets: [], note: "No wallets yet. Offer to add one (connect_wallet), or the demo accounts to try it (set_feature)." };
       if (!snap) return { error: "No data yet" };
       for (const p of snap.positions) ctx.cards.push(positionCard(p, watches));
       const { holdings, errors } = await brain.portfolio.holdings(brain.scenario.get());
       const wallets = brain.wallets.wallets.map((w) => ({
         wallet: w.label,
-        kind: w.chain === "evm" ? "EVM (same address on every EVM network)" : "NEAR",
+        kind: w.chain === "evm" ? "EVM (same address on every EVM network)" : w.chain === "solana" ? "Solana (read only: can receive, can't send)" : "NEAR",
+        canSend: brain.usingDemo ? false : isConnected(w),
         role: w.role || undefined,
         tokens: holdings
           .filter((h) => h.walletLabel === w.label)
@@ -326,8 +329,8 @@ export async function runTool(name: string, args: Record<string, unknown>, ctx: 
         return { error: `Unknown positionId. Use one of: ${snap?.positions.map((p) => p.id).join(", ")}` };
       }
       if (input.kind === "allocation_min" || input.kind === "allocation_max") {
-        if (!["stable", "ETH", "BTC", "NEAR", "other"].includes(String(params.cls)) || !(Number(params.pct) > 0 && Number(params.pct) < 100)) {
-          return { error: "Give cls (stable, ETH, BTC, NEAR or other) and pct between 0 and 100." };
+        if (!["stable", "ETH", "BTC", "NEAR", "SOL", "other"].includes(String(params.cls)) || !(Number(params.pct) > 0 && Number(params.pct) < 100)) {
+          return { error: "Give cls (stable, ETH, BTC, NEAR, SOL or other) and pct between 0 and 100." };
         }
         params.pct = Number(Number(params.pct).toFixed(1));
         params.reason = String(params.reason ?? "").slice(0, 200);
@@ -405,6 +408,8 @@ export async function runTool(name: string, args: Record<string, unknown>, ctx: 
         protectedWallets: brain.prefs.protectedWallets,
         quote: dryQuote,
         simulated: !!scenario?.active,
+        // The demo accounts can never be sent anything, so plans for them are only checked.
+        canSign: brain.usingDemo ? undefined : signBlocker,
       });
       if (!result.ok) return result;
       brain.store.kvSet(`plan:${result.plan.id}`, result.plan);
@@ -414,23 +419,27 @@ export async function runTool(name: string, args: Record<string, unknown>, ctx: 
     case "get_connections": {
       const c = publicConnections(brain);
       return {
-        wallets: c.wallets.map((w) => ({ wallet: w.label, kind: w.chain === "evm" ? "EVM" : "NEAR", app: w.app, rheaLoan: w.rhea ? { health: w.rhea.healthFactor } : null })),
+        wallets: c.wallets.map((w) => ({ wallet: w.label, kind: w.chain === "evm" ? "EVM" : w.chain === "solana" ? "Solana" : "NEAR", connected: w.demo ? "demo portfolio: fixed amounts, nothing can be sent" : w.connected ? `yes, through ${w.app}` : "no, only read (added by address)", rheaLoan: w.rhea ? { health: w.rhea.healthFactor } : null })),
         transactionSafety: c.transactionSafety ? "on" : "off",
-        demoAccounts: c.usingDemo ? "on (standing in until a wallet is connected)" : c.demo ? "on, but your wallets are used" : "off",
-        note: c.wallets.length ? undefined : "Nothing is connected yet.",
+        demoAccounts: c.usingDemo ? "on (standing in until a wallet is added)" : c.demo ? "on, but your wallets are used" : "off",
+        note: c.wallets.length ? undefined : "No wallets yet.",
       };
     }
     case "connect_wallet": {
       const address = typeof args.address === "string" ? args.address.trim() : "";
       if (!address) {
         brain.emit("open", brain.connectLink());
-        return { opened: true, note: "The connect page is open in the browser: pick Meteor, MetaMask or another wallet there. Nierwall reads only the address." };
+        return { opened: true, note: "The connect page is open in the browser: connect a NEAR wallet (Meteor or another) or MetaMask there. Nierwall gets only the address; each transaction is still approved in the wallet." };
       }
       try {
         const w = await brain.addWallet({ address, label: typeof args.label === "string" ? args.label : undefined, via: "typed" });
         await brain.refreshNow();
         const loan = brain.latestSnapshot()?.positions.find((p) => p.walletLabel === w.label);
-        return { added: w.label, kind: w.chain === "evm" ? "EVM, read on every network NEAR Intents supports" : "NEAR", rheaLoan: loan ? summarizePosition(loan, brain.store.listWatches()) : null };
+        return {
+          added: w.label, kind: w.chain === "evm" ? "EVM, read on every network NEAR Intents supports" : w.chain === "solana" ? "Solana, read only" : "NEAR",
+          canSend: isConnected(w) ? true : "no: added by address, so it is only read. To send from it, connect it (connect_wallet without an address).",
+          rheaLoan: loan ? summarizePosition(loan, brain.store.listWatches()) : null,
+        };
       } catch (e) {
         return { error: String(e instanceof Error ? e.message : e) };
       }

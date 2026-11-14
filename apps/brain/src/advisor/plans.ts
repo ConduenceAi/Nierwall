@@ -19,8 +19,8 @@ const amountFields = {
   percent: z.number().positive().max(100).optional(),
 };
 
-/** A network by its NEAR Intents name. For an EVM wallet, which network a step is on; NEAR wallets are always "near". */
-const NetworkName = z.enum([...EVM_NETWORKS, "near"]);
+/** A network by its NEAR Intents name. For an EVM wallet, which network a step is on; NEAR wallets are always "near", Solana ones "sol". */
+const NetworkName = z.enum([...EVM_NETWORKS, "near", "sol"]);
 
 export const PlanAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("swap"), wallet: z.string(), from: z.string(), to: z.string(), chain: NetworkName.optional(), toChain: NetworkName.optional(), ...amountFields }),
@@ -41,8 +41,8 @@ export const PlanInput = z.object({
 });
 export type PlanInput = z.infer<typeof PlanInput>;
 
-export type AssetClass = "stable" | "ETH" | "BTC" | "NEAR" | "other";
-const CLASSES: AssetClass[] = ["stable", "ETH", "BTC", "NEAR", "other"];
+export type AssetClass = "stable" | "ETH" | "BTC" | "NEAR" | "SOL" | "other";
+const CLASSES: AssetClass[] = ["stable", "ETH", "BTC", "NEAR", "SOL", "other"];
 
 export function assetClass(symbol: string): AssetClass {
   const s = symbol.toUpperCase();
@@ -50,6 +50,7 @@ export function assetClass(symbol: string): AssetClass {
   if (s.includes("BTC")) return "BTC";
   if (s.includes("ETH")) return "ETH";
   if (s.includes("NEAR")) return "NEAR";
+  if (s.includes("SOL")) return "SOL";
   return "other";
 }
 
@@ -115,6 +116,8 @@ export interface PlanContext {
   protectedWallets: string[];
   quote: (from: TokenInfo, to: TokenInfo, amount: number) => Promise<QuoteEstimate>;
   simulated: boolean;
+  /** Why a wallet can't send a step (it was only added by address), or null if it can. Unset: every wallet can. */
+  canSign?: (w: Wallet) => string | null;
 }
 
 export type PlanCheck = { ok: true; plan: Plan } | { ok: false; errors: string[]; warnings: string[] };
@@ -144,7 +147,7 @@ export function loanHealth(l: { col: Entry[]; debt: Entry[] }): number | null {
 const fmt = (x: number, d = 4) => x.toLocaleString("en-US", { maximumFractionDigits: x >= 1000 ? 0 : x >= 1 ? Math.min(d, 2) : d });
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 /** Left in each network's own coin to pay network fees. */
-const GAS_RESERVE: Record<Network, number> = { near: 0.05, eth: 0.002, base: 0.0002, arb: 0.0002, op: 0.0002, scroll: 0.0002, pol: 0.5, bsc: 0.001, gnosis: 0.05, avax: 0.02, bera: 0.05 };
+const GAS_RESERVE: Record<Network, number> = { near: 0.05, sol: 0.01, eth: 0.002, base: 0.0002, arb: 0.0002, op: 0.0002, scroll: 0.0002, pol: 0.5, bsc: 0.001, gnosis: 0.05, avax: 0.02, bera: 0.05 };
 /** Where each protocol's loans live. */
 const LOAN_NETWORK: Record<"rhea", Network> = { rhea: "near" };
 
@@ -225,7 +228,7 @@ export async function checkPlan(input: PlanInput, ctx: PlanContext): Promise<Pla
     return t;
   };
   /** The networks a wallet's steps can use. */
-  const networksOf = (w: Wallet): Network[] => (w.chain === "near" ? ["near"] : [...(w.networks ?? EVM_NETWORKS)]);
+  const networksOf = (w: Wallet): Network[] => (w.chain === "near" ? ["near"] : w.chain === "solana" ? ["sol"] : [...(w.networks ?? EVM_NETWORKS)]);
   /**
    * The network a step uses in a wallet: the one named; else, for where funds arrive, `prefer` (the source's network,
    * so a swap stays put); else where the wallet holds the most of that token (by value); else Base; else the first
@@ -235,7 +238,7 @@ export async function checkPlan(input: PlanInput, ctx: PlanContext): Promise<Pla
     const nets = networksOf(w);
     if (named) {
       if (nets.includes(named)) return named;
-      errors.push(`${what}: ${w.label} ${w.chain === "near" ? "is a NEAR wallet" : `isn't read on ${networkName(named)}`}. Its networks: ${nets.join(", ")}.`);
+      errors.push(`${what}: ${w.label} ${w.chain === "near" ? "is a NEAR wallet" : w.chain === "solana" ? "is a Solana wallet" : `isn't read on ${networkName(named)}`}. Its networks: ${nets.join(", ")}.`);
       return null;
     }
     if (nets.length === 1) return nets[0]!;
@@ -257,6 +260,12 @@ export async function checkPlan(input: PlanInput, ctx: PlanContext): Promise<Pla
     }
     return true;
   };
+  /** Only a connected wallet can send a step: Nierwall hands it to that wallet's app to approve. */
+  const canSign = (w: Wallet, what: string) => {
+    const why = ctx.canSign?.(w);
+    if (why) errors.push(`${what}: ${why}`);
+    return !why;
+  };
 
   const steps: PlanStep[] = [];
   const signers = new Set<string>();
@@ -273,6 +282,12 @@ export async function checkPlan(input: PlanInput, ctx: PlanContext): Promise<Pla
         errors.push(`${what}: unknown wallet. Use one of: ${knownWallets}.`);
         continue;
       }
+      // Nierwall reads Solana wallets but has no way to send from them; they can still receive.
+      if (fw.chain === "solana") {
+        errors.push(`${what}: ${fw.label} is a Solana wallet: Nierwall reads it but can't send from it. Use another wallet as the source.`);
+        continue;
+      }
+      if (!canSign(fw, what)) continue;
       const fromSym = a.type === "swap" ? a.from : a.token;
       const toSym = a.type === "swap" ? a.to : a.toToken ?? a.token;
       const fromNet = pick(fw, fromSym, a.type === "swap" ? a.chain : a.fromChain, what);
@@ -332,6 +347,8 @@ export async function checkPlan(input: PlanInput, ctx: PlanContext): Promise<Pla
       errors.push(`${what}: Nierwall doesn't watch a Rhea loan for ${w.label}.`);
       continue;
     }
+    // Repaying and adding collateral are sent from the loan's wallet; a withdrawal is done by hand in the Rhea app.
+    if (a.type !== "withdraw" && !canSign(w, what)) continue;
     const loanNet = LOAN_NETWORK[a.protocol];
     const protoName = "Rhea";
     const sym = a.protocol === "rhea" && same(a.token, "NEAR") ? "wNEAR" : a.token;

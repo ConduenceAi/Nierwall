@@ -1,6 +1,7 @@
+import { randomBytes } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
-import type { Hono } from "hono";
+import type { Context, Hono } from "hono";
 import { z } from "zod";
 import type { Plan } from "../advisor/plans.js";
 import type { Brain } from "../brain.js";
@@ -9,6 +10,19 @@ import type { FixOption } from "../types.js";
 import type { SignSessions } from "./sessions.js";
 
 const DIST = resolve(ROOT, "apps/sign/dist");
+
+/**
+ * The review and connect page, with its security policy. NEAR Connect runs the wallet's code (Meteor's) as inline
+ * scripts in a srcdoc iframe, which inherits this policy, so a fresh nonce per load lets exactly those scripts and
+ * the page's own run.
+ */
+export function servePage(c: Context) {
+  const p = resolve(DIST, "index.html");
+  if (!existsSync(p)) return c.text("Build the page first: pnpm --filter @guardian/sign build", 500);
+  const nonce = randomBytes(16).toString("base64");
+  const csp = `default-src 'self'; script-src 'self' 'nonce-${nonce}' https://raw.githubusercontent.com https://*.hot-labs.org; frame-src https: ; connect-src *; style-src 'self' 'unsafe-inline' https:; font-src https: data:; img-src * data:`;
+  return c.html(readFileSync(p, "utf8").replace("<script ", `<script nonce="${nonce}" `), 200, { "cache-control": "no-store", "content-security-policy": csp });
+}
 
 function findFix(brain: Brain, fixId: string): FixOption | null {
   const saved = brain.store.kvGet<FixOption>(`fix:${fixId}`);
@@ -25,15 +39,14 @@ export function registerSignRoutes(app: Hono, brain: Brain, sessions: SignSessio
   // Fixes (from alerts) and checked plans (from the advisor) share one review route.
   app.post("/api/fixes/:fixId/review", async (c) => {
     const id = c.req.param("fixId");
-    // From the orb: open the page on one wallet (e.g. Meteor) and ask it to sign each step as it becomes ready.
-    const opts = z.object({ wallet: z.enum(["meteor-wallet"]).optional(), auto: z.boolean().optional() }).parse(await c.req.json().catch(() => ({})));
-    const query = new URLSearchParams({ ...(opts.wallet ? { wallet: opts.wallet } : {}), ...(opts.auto ? { auto: "1" } : {}) }).toString();
+    // From the orb: the page asks each step's wallet app to sign it as soon as it's ready.
+    const { auto } = z.object({ auto: z.boolean().optional() }).parse(await c.req.json().catch(() => ({})));
     const plan = id.startsWith("plan_") ? brain.store.kvGet<Plan>(`plan:${id}`) : null;
     const fix = plan ? null : findFix(brain, id);
     if (!plan && !fix) return c.json({ error: "Fix not found or expired" }, 404);
     try {
       const s = plan ? await sessions.createFromPlan(plan) : await sessions.create(fix!);
-      return c.json({ url: `http://127.0.0.1:${port}/sign/${s.token}${query ? `?${query}` : ""}`, session: s });
+      return c.json({ url: `http://127.0.0.1:${port}/sign/${s.token}${auto ? "?auto=1" : ""}`, session: s });
     } catch (e) {
       return c.json({ error: String(e instanceof Error ? e.message : e).slice(0, 300) }, 400);
     }
@@ -47,9 +60,7 @@ export function registerSignRoutes(app: Hono, brain: Brain, sessions: SignSessio
 
   app.get("/sign/:token", (c) => {
     if (!sessions.get(c.req.param("token"))) return c.text("This review link has expired. Open the fix again from Nierwall.", 404);
-    const p = resolve(DIST, "index.html");
-    if (!existsSync(p)) return c.text("Build the signing page first: pnpm --filter @guardian/sign build", 500);
-    return c.html(readFileSync(p, "utf8"), 200, { "cache-control": "no-store", "content-security-policy": "default-src 'self'; script-src 'self' https://raw.githubusercontent.com https://*.hot-labs.org; frame-src https: ; connect-src *; style-src 'self' 'unsafe-inline'; img-src * data:" });
+    return servePage(c);
   });
 
   app.get("/sign/:token/session", (c) => {

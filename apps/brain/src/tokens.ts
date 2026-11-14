@@ -6,13 +6,13 @@ const log = logger("tokens");
 
 /** A token Nierwall can value and swap: one entry of the NEAR Intents (1Click) token list. */
 export interface TokenInfo {
-  /** Where it lives: NEAR, or an EVM network by its NEAR Intents name (eth, base, arb…). */
+  /** Where it lives: NEAR, an EVM network by its NEAR Intents name (eth, base, arb…), or Solana (sol). */
   chain: Network;
   symbol: string;
   decimals: number;
   /** NEAR Intents asset id, used in quotes. */
   assetId: string;
-  /** ERC-20 address (lowercase) on an EVM network or NEP-141 account on NEAR; null for each network's own coin (ETH, POL, NEAR…). */
+  /** ERC-20 address (lowercase) on an EVM network, NEP-141 account on NEAR, or SPL mint on Solana; null for each network's own coin (ETH, NEAR, SOL…). */
   contract: string | null;
   coingeckoId: string | null;
   /** USD price from the NEAR Intents list, refreshed with it. */
@@ -49,13 +49,13 @@ export async function intentsTokens(): Promise<RawToken[]> {
   }
 }
 
-/** Tokens on NEAR and the EVM networks that NEAR Intents can swap, with prices. */
+/** Tokens on NEAR, the EVM networks and Solana that NEAR Intents can swap, with prices. */
 export async function tokenList(): Promise<TokenInfo[]> {
   await intentsTokens();
   return cache!.tokens;
 }
 
-const NETWORKS = new Set<string>([...EVM_NETWORKS, "near"]);
+const NETWORKS = new Set<string>([...EVM_NETWORKS, "near", "sol"]);
 
 export function parseTokenList(raw: RawToken[]): TokenInfo[] {
   const tokens: TokenInfo[] = [];
@@ -63,7 +63,8 @@ export function parseTokenList(raw: RawToken[]): TokenInfo[] {
     // Old entries NEAR Intents keeps for existing balances, like "POL(DEPRECATED)", aren't offered.
     if (!NETWORKS.has(t.blockchain) || t.symbol.includes("(DEPRECATED)")) continue;
     const price = Number(t.price ?? 0);
-    const contract = t.contractAddress ? (t.blockchain === "near" ? t.contractAddress : t.contractAddress.toLowerCase()) : null;
+    // EVM addresses are compared in lowercase; NEAR accounts and Solana mints (base58) are case-sensitive as they are.
+    const contract = t.contractAddress ? (t.blockchain === "near" || t.blockchain === "sol" ? t.contractAddress : t.contractAddress.toLowerCase()) : null;
     tokens.push({ chain: t.blockchain as Network, symbol: t.symbol, decimals: t.decimals, assetId: t.assetId, contract, coingeckoId: t.coingeckoId ?? null, priceUsd: price > 0 ? price : null });
   }
   // Native NEAR swaps through wNEAR: it's wrapped first, then deposited.

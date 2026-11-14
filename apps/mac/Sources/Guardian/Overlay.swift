@@ -40,35 +40,43 @@ final class OverlayModel: ObservableObject {
 
 enum OrbMode { case idle, listening, thinking, speaking }
 
-/// Siri-style orb: colored light drifting inside a dark glass sphere. It swells with your voice,
-/// swirls while Nierwall thinks, and pulses while it speaks.
+/// Siri-style orb: blue and white light drifting inside a black glass sphere, ringed by a thin silver line. It swells
+/// with your voice, swirls while Nierwall thinks, and pulses while it speaks.
 struct SiriOrb: View {
     var mode: OrbMode
     var level: Double = 0
     var size: CGFloat = 64
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// Shades of green, led by NEAR green (#00EC97).
+    /// Nierwall blue (#3B82F6), a lighter and a deeper tone of it, and a little white.
     static let colors: [Color] = [
-        Color(red: 0.00, green: 0.93, blue: 0.59),
-        Color(red: 0.06, green: 0.62, blue: 0.40),
-        Color(red: 0.08, green: 0.72, blue: 0.65),
-        Color(red: 0.52, green: 0.85, blue: 0.20),
+        Palette.blue,
+        Color(red: 0.38, green: 0.60, blue: 0.98),
+        Color(red: 0.11, green: 0.31, blue: 0.85),
+        Color.white.opacity(0.45),
     ]
     private static let speeds: [Double] = [0.7, -0.95, 1.2, -0.55]
+    /// Silver: bright where the light catches it, darker in between.
+    private static let silver: [Color] = [.white, Color(white: 0.55), Color(white: 0.9), Color(white: 0.45), .white]
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 60, paused: reduceMotion || (mode == .idle && size < 40))) { context in
             let t = context.date.timeIntervalSinceReferenceDate
             let e = energy(at: t)
             ZStack {
-                Circle().fill(Color(red: 0.01, green: 0.07, blue: 0.05))
+                Circle().fill(.black)
                 ForEach(0..<4, id: \.self) { i in blob(i, t: t, e: e) }
                 Circle().fill(RadialGradient(colors: [.white.opacity(0.32), .clear], center: UnitPoint(x: 0.32, y: 0.24), startRadius: 0, endRadius: size * 0.5))
             }
             .frame(width: size, height: size)
             .clipShape(Circle())
-            .overlay(Circle().strokeBorder(.white.opacity(0.2), lineWidth: max(0.5, size / 100)))
+            // The silver line: very thin, with a shine that slowly travels around it.
+            .overlay(
+                Circle()
+                    .strokeBorder(AngularGradient(colors: Self.silver, center: .center, angle: .radians((t * 0.8).truncatingRemainder(dividingBy: 2 * .pi))),
+                                  lineWidth: max(0.6, size / 90))
+                    .shadow(color: .white.opacity(0.35), radius: max(0.5, size / 80))
+            )
             .shadow(color: Self.colors[0].opacity(0.2 + 0.4 * e), radius: size * (0.06 + 0.2 * e))
             .scaleEffect(1 + 0.08 * e)
         }
@@ -154,7 +162,7 @@ struct OverlayView: View {
 /// shortcut or text you're typing keeps going to your app.
 final class OverlayPanel: NSPanel {
     init() {
-        super.init(contentRect: NSRect(x: 0, y: 0, width: 116, height: 116),
+        super.init(contentRect: NSRect(x: 0, y: 0, width: OverlayController.side, height: OverlayController.side),
                    styleMask: [.nonactivatingPanel, .borderless, .fullSizeContentView], backing: .buffered, defer: false)
         isFloatingPanel = true
         level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
@@ -192,12 +200,14 @@ final class FirstClickHostingView<Content: View>: NSHostingView<Content> {
 
 // MARK: - Controller
 
-/// Shows the orb at the top center of the screen you're working on, with the edge glow. The conversation
-/// decides when it goes; a last spoken message fades it out on its own.
+/// Shows the orb centered a fifth of the way down the screen you're working on, with the edge glow. The
+/// conversation decides when it goes; a last spoken message fades it out on its own.
 @MainActor
 final class OverlayController {
-    static let orbSize: CGFloat = 64
-    static let margin: CGFloat = 22
+    static let orbSize: CGFloat = 80
+    static let margin: CGFloat = 28
+    /// The orb's window: the orb, room to swell, and its glow.
+    static var side: CGFloat { (orbSize * 1.12 + margin * 2).rounded() }
 
     let model = OverlayModel()
     private let panel = OverlayPanel()
@@ -235,9 +245,10 @@ final class OverlayController {
     func show() {
         dismissTimer?.invalidate()
         guard let screen = NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) }) ?? NSScreen.main else { return }
-        // Top center, just under the menu bar (and the notch).
-        let side = (Self.orbSize * 1.12 + Self.margin * 2).rounded()
-        panel.setFrame(NSRect(x: (screen.frame.midX - side / 2).rounded(), y: (screen.visibleFrame.maxY - side + 8).rounded(), width: side, height: side), display: true)
+        // Centered across, a fifth of the way down: well clear of the menu bar and the notch.
+        let side = Self.side
+        let centerY = screen.frame.maxY - screen.frame.height / 5
+        panel.setFrame(NSRect(x: (screen.frame.midX - side / 2).rounded(), y: (centerY - side / 2).rounded(), width: side, height: side), display: true)
         glow.setFrame(screen.frame, display: false)
         if !shown {
             shown = true
@@ -347,16 +358,57 @@ enum OverlayPreviews {
             save(mockScreen(model), name, dir)
         }
         if let card = try? JSONDecoder().decode(PlanCard.self, from: Data(samplePlan.utf8)) {
-            save(PlanCardView(card: card, review: { _ in }).padding(14).frame(width: 390).background(Color(white: 0.93)), "5-plan-card", dir)
+            save(PlanCardView(card: card, review: { _ in }).padding(14).frame(width: 390).background(.black).environment(\.colorScheme, .dark).tint(Palette.blue), "5-plan-card", dir)
         }
         save(HStack(spacing: 28) {
-            SiriOrb(mode: .idle)
-            SiriOrb(mode: .listening, level: 0.85)
-            SiriOrb(mode: .thinking)
-            SiriOrb(mode: .speaking)
+            SiriOrb(mode: .idle, size: OverlayController.orbSize)
+            SiriOrb(mode: .listening, level: 0.85, size: OverlayController.orbSize)
+            SiriOrb(mode: .thinking, size: OverlayController.orbSize)
+            SiriOrb(mode: .speaking, size: OverlayController.orbSize)
             SiriOrb(mode: .listening, level: 0.5, size: 22)
         }.padding(30).background(desktop), "4-orbs", dir)
+        renderPanel(to: dir)
     }
+
+    /// The panel as it opens (your wallets) and with the chat, drawn in an offscreen window so its controls are real.
+    private static func renderPanel(to dir: URL) {
+        let brain = BrainClient()
+        brain.connection = .connected
+        brain.connections = try? JSONDecoder().decode(Connections.self, from: Data(sampleConnections.utf8))
+        brain.status = try? JSONDecoder().decode(BrainStatus.self, from: Data(sampleStatus.utf8))
+        brain.items = [
+            ChatItem(role: .user, text: "How's my Rhea loan?"),
+            ChatItem(role: .assistant, text: "Savings is at health 1.41, above your 1.30 floor. NEAR would have to fall 29% to liquidate it.", via: "near-ai"),
+        ]
+        let actions = PanelActions(send: { _ in }, toggleMic: {}, review: { _ in }, confirmWatch: { _ in }, snooze: { _ in }, linkTelegram: {}, connectWallet: {}, readOnly: { _ in nil })
+        for chat in [false, true] {
+            let ui = UIState()
+            ui.showChat = chat
+            let host = NSHostingView(rootView: PanelView(brain: brain, ui: ui, actions: actions))
+            host.frame = NSRect(x: 0, y: 0, width: 390, height: 540)
+            let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+            window.appearance = NSAppearance(named: .darkAqua)
+            window.contentView = host
+            RunLoop.current.run(until: Date().addingTimeInterval(0.4)) // let SwiftUI lay it out
+            guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { continue }
+            host.cacheDisplay(in: host.bounds, to: rep)
+            let name = chat ? "7-panel-chat" : "6-panel-wallets"
+            try? rep.representation(using: .png, properties: [:])?.write(to: dir.appendingPathComponent("\(name).png"))
+            print("wrote \(name).png")
+        }
+    }
+
+    private static let sampleConnections = """
+    {"wallets":[{"label":"Savings","chain":"near","address":"savings.near","app":"Meteor","connected":true,"rhea":{"healthFactor":1.41,"collateralUsd":5200,"debtUsd":2900}},
+                {"label":"Cash","chain":"evm","address":"0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB","app":null,"connected":false,"rhea":null},
+                {"label":"Trading","chain":"solana","address":"9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM","app":null,"connected":false,"rhea":null}],
+     "demo":false,"usingDemo":false,"transactionSafety":true}
+    """
+
+    private static let sampleStatus = """
+    {"lastRefresh":null,"openIncidents":0,"dataProblems":0,"telegramLinked":false,
+     "attestation":{"model":"z-ai/glm-5.3-flash","verified":true,"verifiedAt":null,"detail":""},"state":"ok"}
+    """
 
     private static let samplePlan = """
     {"type":"plan","planId":"plan_x","title":"Bring cash over and repay Rhea","goal":"safer Rhea loan",
@@ -370,14 +422,15 @@ enum OverlayPreviews {
 
     private static let desktop = LinearGradient(colors: [Color(red: 0.16, green: 0.2, blue: 0.3), Color(red: 0.36, green: 0.24, blue: 0.4)], startPoint: .topLeading, endPoint: .bottomTrailing)
 
-    /// A 1280×800 screen: menu bar, an app window, the edge glow, and the orb where the real one goes.
+    /// A 1280×800 screen: menu bar, an app window, the edge glow, and the orb where the real one goes (a fifth of the
+    /// way down).
     private static func mockScreen(_ model: OverlayModel) -> some View {
         ZStack(alignment: .top) {
             desktop
             RoundedRectangle(cornerRadius: 12).fill(Color(white: 0.95)).frame(width: 820, height: 500).shadow(radius: 24).padding(.top, 150)
             Rectangle().fill(.black.opacity(0.35)).frame(height: 28)
             if model.glowing { EdgeGlow(model: model) }
-            OverlayView(model: model, orbTap: {}).padding(.top, 28 - 8)
+            OverlayView(model: model, orbTap: {}).padding(.top, 800 / 5 - OverlayController.side / 2)
         }
         .frame(width: 1280, height: 800)
     }
