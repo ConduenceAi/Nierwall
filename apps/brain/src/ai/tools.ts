@@ -165,7 +165,7 @@ export const TOOL_DEFS = [
     type: "function" as const,
     function: {
       name: "recall_memory",
-      description: "Search what Nierwall remembers about the user: goals, limits, wallet roles, past decisions. Returns current facts only.",
+      description: "Search what Nierwall remembers about the user: goals, limits, wallet roles, past decisions. Returns current facts with the date each became true; when two disagree, the newer one is what the user wants now.",
       parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"], additionalProperties: false },
     },
   },
@@ -366,7 +366,8 @@ export async function runTool(name: string, args: Record<string, unknown>, ctx: 
     }
     case "recall_memory": {
       if (!ctx.memory) return { facts: [], note: "Memory service is not running" };
-      return { facts: await ctx.memory.search(String(args.query), 8).catch(() => []) };
+      const facts = await ctx.memory.search(String(args.query), 8).catch(() => []);
+      return { facts: facts.sort((a, b) => (b.validAt ?? "").localeCompare(a.validAt ?? "")) };
     }
     default:
       return { error: `Unknown tool ${name}` };

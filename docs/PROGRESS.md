@@ -8,7 +8,7 @@ Last updated: 2026-11-13 (night, IST). Deadline: 2026-11-14 23:59 UTC. Judging 1
 | 2 | Brain core: prices, Aave + Rhea readers | Done, live-tested | Rhea health matches the Rhea SDK exactly; Aave matches the protocol within 2% |
 | 3 | Watch engine, scheduler, scenario mode, `pnpm demo`, `pnpm simulate` | Done, live-tested | 6 watch types; incidents open, escalate, remind, resolve, snooze; checks every 20 s near a limit, 60 s otherwise |
 | 4 | Local API + WebSocket, Telegram bot | API done, Telegram untested | Telegram needs `TELEGRAM_BOT_TOKEN`; link it from the app's "Get alerts on Telegram" button |
-| 5 | Memory service (Graphiti on embedded FalkorDB) | Built, extraction untested | Starts and serves reads; extraction and search need `OPENAI_API_KEY` |
+| 5 | Memory service (Graphiti on embedded FalkorDB) | Done, live-tested | Extraction, search and the facts list checked with a real OpenAI key; facts are dated and the newest wins. Needs `OPENAI_API_KEY` |
 | 6 | NEAR AI agent | Built, untested live | Attested, end-to-end encrypted, 7 tools, number check, seed-phrase tripwire, template fallback. Needs `NEAR_AI_API_KEY` |
 | 7 | Fixes, NEAR Intents quotes, review and signing page | Done, signing untested | Live 1Click quotes with 5 checks; cash for a Rhea fix comes from whichever EVM network holds the most USDC; MetaMask is switched to each step's network. Signing needs your wallets (test with a tiny amount); blocked on demo accounts |
 | 8 | MetaMask Snap (pre-sign checks) | Built, untested in MetaMask | Analysis tested with real calldata; needs MetaMask Flask in your browser |
@@ -31,6 +31,10 @@ Last updated: 2026-11-13 (night, IST). Deadline: 2026-11-14 23:59 UTC. Judging 1
 
 ## Log
 
+- **2026-11-14 (morning)** Memory checked live with an OpenAI key: three messages became wallets, a loan, a goal
+  and a preference linked by dated facts, and a search returned the right ones. Fixed two things it showed: the list
+  of everything remembered read the wrong graph (Graphiti keeps each group in its own), and a changed limit left the
+  old fact next to the new one, so the AI now gets each fact's date, newest first, and is told the newer one wins.
 - **2026-11-13 (late night)** Your wallets on any EVM chain: an EVM wallet is read on all ten networks NEAR
   Intents supports (Ethereum, Base, Arbitrum, OP Mainnet, Polygon, BNB Chain, Gnosis, Avalanche, Berachain,
   Scroll), so holdings, the mix and fixes see money wherever it is. A Rhea fix takes USDC from the network that

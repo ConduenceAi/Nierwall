@@ -105,7 +105,8 @@ async def worker():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db = AsyncFalkorDB(str(DATA / "memory.falkordb"))
-    driver = FalkorDriver(falkor_db=db, database="guardian")
+    # Graphiti keeps each group in its own graph, named after the group: read and write that one.
+    driver = FalkorDriver(falkor_db=db, database=GROUP)
     kwargs = {}
     if not HAS_LLM:
         # Graphiti needs clients at init; give it placeholders so reads still work without a key.
