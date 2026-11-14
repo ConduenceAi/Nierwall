@@ -7,7 +7,7 @@ export interface PriceInfo {
   usd: number;
   /** Unix seconds of the oracle publish time. */
   publishTime: number;
-  source: "aave-oracle" | "rhea-pyth" | "defillama" | "coingecko";
+  source: "rhea-pyth" | "defillama" | "coingecko";
   /** True when a scenario shock changed this price. */
   simulated: boolean;
 }
@@ -17,14 +17,14 @@ export interface TokenAmount {
   symbol: string;
   amount: number;
   usd: number;
-  /** Collateral weight (Rhea volatility ratio or Aave liquidation threshold), 0..1. */
+  /** Collateral weight (Rhea's volatility ratio), 0..1. */
   weight: number;
 }
 
 export interface LendingPosition {
-  /** Stable id, e.g. "rhea:<wallet label>" or "aave:<wallet label>". */
+  /** Stable id: "rhea:<wallet label>". */
   id: string;
-  protocol: "rhea" | "aave";
+  protocol: "rhea";
   chain: Network;
   walletLabel: string;
   collateral: TokenAmount[];

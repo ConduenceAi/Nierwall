@@ -34,9 +34,8 @@ const watch = (kind: Watch["kind"], params: Record<string, unknown>): Watch => (
 
 function ctx(over: Partial<PlanContext> = {}): PlanContext {
   return {
-    wallets: { wallets: [{ label: "Cash", chain: "evm", address: "0xabc", role: "" }, { label: "Savings", chain: "near", address: "you.near", role: "" }], watchAave: [], watchRhea: ["Savings"] },
+    wallets: { wallets: [{ label: "Cash", chain: "evm", address: "0xabc", role: "" }, { label: "Savings", chain: "near", address: "you.near", role: "" }], watchRhea: ["Savings"] },
     positions: [rheaLoan],
-    aave: new Map(),
     rheaToken: () => null,
     holdings: [holding("Cash", "base", "USDC", 5000), holding("Cash", "base", "ETH", 1), holding("Savings", "near", "NEAR", 100)],
     tokens,

@@ -53,7 +53,7 @@ export function positionCard(p: LendingPosition, watches: Watch[]): Card {
   return {
     type: "position",
     positionId: p.id,
-    title: p.protocol === "rhea" ? "Rhea · NEAR" : "Aave V3 · Base",
+    title: "Rhea · NEAR",
     wallet: p.walletLabel,
     health: p.healthFactor,
     floor: floorWatch ? Number((floorWatch.params as any).threshold) : null,

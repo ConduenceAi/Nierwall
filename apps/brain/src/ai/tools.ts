@@ -118,10 +118,10 @@ export const TOOL_DEFS = [
         "Check a plan on the user's Mac before suggesting it. Each step is replayed against real balances, loans and live NEAR Intents quotes; " +
         "returns verified numbers (health before/after, allocation before/after, cost) or the problems to fix. Never state results for a plan this didn't verify. " +
         "Steps: swap {wallet, from, to} within one wallet; move {fromWallet, toWallet, token, toToken?} between the user's own wallets, across chains if needed; " +
-        "repay / add_collateral / withdraw {wallet, protocol: aave|rhea, token}. Give each step exactly one of amount (tokens), amountUsd, or percent " +
+        "repay / add_collateral / withdraw {wallet, protocol: rhea, token}. Give each step exactly one of amount (tokens), amountUsd, or percent " +
         "(of the available balance; for repay, of the debt; for withdraw, of that collateral). Use token symbols from get_portfolio. " +
         "An EVM wallet holds tokens on several networks: name them with chain/toChain (swap) or fromChain/toChain (move), using the chain values from get_portfolio; " +
-        "a swap or move can cross networks, even within one wallet. Left out, Nierwall uses the network where the wallet holds the most of that token. NEAR wallets are always near. Aave is on base, Rhea on near. " +
+        "a swap or move can cross networks, even within one wallet. Left out, Nierwall uses the network where the wallet holds the most of that token. NEAR wallets are always near, and Rhea is on near. " +
         "Set maxCostUsd to the most this plan is worth paying in fees and slippage, and costReason to why; plans that cost more are rejected.",
       parameters: {
         type: "object",
@@ -148,7 +148,7 @@ export const TOOL_DEFS = [
                 chain: { type: "string", enum: [...EVM_NETWORKS, "near"], description: "swap: the network the from token is on" },
                 fromChain: { type: "string", enum: [...EVM_NETWORKS, "near"], description: "move: the network the token leaves from" },
                 toChain: { type: "string", enum: [...EVM_NETWORKS, "near"], description: "swap or move: the network it arrives on" },
-                protocol: { type: "string", enum: ["aave", "rhea"] },
+                protocol: { type: "string", enum: ["rhea"] },
                 amount: { type: "number" },
                 amountUsd: { type: "number" },
                 percent: { type: "number" },
@@ -178,7 +178,7 @@ function summarizePosition(p: LendingPosition, watches: Watch[]) {
     floor: fp ? Number(fp.threshold) : null,
     repairTarget: fp?.target != null ? Number(fp.target) : null,
     positionId: p.id,
-    protocol: p.protocol === "rhea" ? "Rhea (NEAR)" : "Aave V3 (Base)",
+    protocol: "Rhea (NEAR)",
     wallet: p.walletLabel,
     healthFactor: p.healthFactor == null ? null : Number(p.healthFactor.toFixed(3)),
     liquidationDropPct: p.liquidationDistance == null ? null : Number((p.liquidationDistance * 100).toFixed(1)),
@@ -320,7 +320,7 @@ export async function runTool(name: string, args: Record<string, unknown>, ctx: 
       for (const fix of fixes) ctx.cards.push({ type: "fix", alertId: "adhoc", fix });
       return fixes.length
         ? fixes.map((f) => ({ rank: f.rank, title: f.title, healthBefore: f.healthBefore, healthAfter: f.healthAfter, steps: f.steps.map((s) => `${networkName(s.chain)}: ${s.description}`), notes: f.notes }))
-        : { note: "No fixes needed or this position type is read-only (Aave fixes are not supported yet)." };
+        : { note: "No fixes needed for this position." };
     }
     case "asset_volatility": {
       const q = String(args.token ?? "").trim();
@@ -350,7 +350,6 @@ export async function runTool(name: string, args: Record<string, unknown>, ctx: 
       const result = await checkPlan(parsed.data, {
         wallets: brain.wallets,
         positions: brain.last.snapshot.positions,
-        aave: brain.last.aave,
         rheaToken: (symbol) => rheaTokenBySymbol(assets, symbol),
         holdings,
         tokens,

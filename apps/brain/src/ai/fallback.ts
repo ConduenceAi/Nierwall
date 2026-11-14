@@ -29,13 +29,9 @@ export function fallbackReply(brain: Brain, text: string): Reply {
     };
   }
 
-  const positions = snap.positions.filter((p) => {
-    if (/rhea|near/.test(q) && !/aave|base|eth/.test(q)) return p.protocol === "rhea";
-    if (/aave|base/.test(q) && !/rhea/.test(q)) return p.protocol === "aave";
-    return true;
-  });
+  const positions = snap.positions;
   const lines = positions.map((p) => {
-    const name = p.protocol === "rhea" ? "Rhea on NEAR" : "Aave on Base";
+    const name = "Rhea on NEAR";
     if (p.healthFactor == null) return `${name} has no debt.`;
     const floor = watches.find((w) => w.kind === "health_below" && (w.params as any).positionId === p.id);
     const f = floor ? ` (floor ${n2(Number((floor.params as any).threshold))})` : "";

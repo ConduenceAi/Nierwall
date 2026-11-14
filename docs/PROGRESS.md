@@ -5,7 +5,7 @@ Last updated: 2026-11-13 (night, IST). Deadline: 2026-11-14 23:59 UTC. Judging 1
 | # | Component | Status | Notes |
 |---|-----------|--------|-------|
 | 1 | Repo scaffold, config templates | Done | pnpm workspace, `.env.example`, wallet template, MIT license |
-| 2 | Brain core: prices, Aave + Rhea readers | Done, live-tested | Rhea health matches the Rhea SDK exactly; Aave matches the protocol within 2% |
+| 2 | Brain core: prices, Rhea reader | Done, live-tested | Rhea health matches the Rhea SDK exactly. Aave was supported until 2026-11-14, then taken out to keep the focus on NEAR |
 | 3 | Watch engine, scheduler, scenario mode, `pnpm demo`, `pnpm simulate` | Done, live-tested | 6 watch types; incidents open, escalate, remind, resolve, snooze; checks every 20 s near a limit, 60 s otherwise |
 | 4 | Local API + WebSocket, Telegram bot | API done, Telegram untested | Telegram needs `TELEGRAM_BOT_TOKEN`; link it from the app's "Get alerts on Telegram" button |
 | 5 | Memory service (Graphiti on embedded FalkorDB) | Done, live-tested | Extraction, search and the facts list checked with a real OpenAI key; facts are dated and the newest wins. Needs `OPENAI_API_KEY` |
@@ -15,7 +15,7 @@ Last updated: 2026-11-13 (night, IST). Deadline: 2026-11-14 23:59 UTC. Judging 1
 | 9 | Mac menu-bar app (Swift) | Built, launched | Press ⌘⌥ for the Siri-style orb (top center, no background, edge glow): a hands-free conversation where a pause sends, it answers and listens again, you can talk over it, and Esc or silence ends it. Turn-taking checked offline (`apps/mac/scripts/check.sh`); voice, echo cancellation, overlay and notifications still need you at the screen |
 | 10 | Always-on (launchd) + docs | Done | `pnpm always-on` installs it (you run it) |
 | 11 | Holdings, token watches, portfolio mix | Done, live-tested | Every token in every wallet: an EVM wallet on all ten EVM networks NEAR Intents supports (a batched read per network, with a backup node each), NEAR via FastNEAR; price watches for any coin, priced by DefiLlama; mix targets as watches |
-| 12 | Advisor (AI plans, Mac checks) | Checker live-tested, AI untested | Plans replayed against balances, loans and live quotes; review sessions built for swaps, moves, Aave and Rhea. AI sets floors, targets, alert severity and cost limits. Needs `NEAR_AI_API_KEY` to try the AI part |
+| 12 | Advisor (AI plans, Mac checks) | Checker live-tested, AI untested | Plans replayed against balances, loans and live quotes; review sessions built for swaps, moves and Rhea. AI sets floors, targets, alert severity and cost limits. Needs `NEAR_AI_API_KEY` to try the AI part |
 | 13 | Snap: transaction simulation | Done, live-tested on Base | "You send / you get", mix targets with alternatives, bad rates, hidden approvals, failing transactions |
 | 14 | Snap on every network | Done, live-tested on Ethereum, Arbitrum, Polygon, Avalanche | Simulation on 13 EVM networks, decoding elsewhere; NEAR transactions from MetaMask (NEP-518) decoded, including Rhea health and full-access keys |
 
@@ -31,6 +31,9 @@ Last updated: 2026-11-13 (night, IST). Deadline: 2026-11-14 23:59 UTC. Judging 1
 
 ## Log
 
+- **2026-11-14 (morning)** Rhea only, for now: Aave is out of watching, fixes, plans, signing and the Snap, to keep
+  the focus on NEAR. NEAR's price still comes from Rhea's oracle; ETH and USDC now come from the market. EVM wallets
+  are still read on every network for cash. The demo's EVM wallet is now "Demo EVM wallet".
 - **2026-11-14 (morning)** Memory checked live with an OpenAI key: three messages became wallets, a loan, a goal
   and a preference linked by dated facts, and a search returned the right ones. Fixed two things it showed: the list
   of everything remembered read the wrong graph (Graphiti keeps each group in its own), and a changed limit left the

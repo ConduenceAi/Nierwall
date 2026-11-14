@@ -1,22 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { decodeFunctionData, encodeFunctionResult, multicall3Abi, type Hex } from "viem";
+import { decodeFunctionData, encodeFunctionResult, erc20Abi, multicall3Abi, type Hex } from "viem";
 import { evmChain } from "../src/chains.js";
-import { erc20Abi } from "../src/protocols/aave.js";
 import { NATIVE, resolveTokens, tokenPrices } from "../src/snap/pricing.js";
 import { coinPrices, volatility } from "../src/sources/coins.js";
 import { llamaPrices } from "../src/sources/defillama.js";
 import { fetchPrices } from "../src/sources/prices.js";
 
-// The oracles behind fetchPrices: Aave's answers for ETH and USDC, Rhea's is down, so NEAR has to come from the market.
-vi.mock("../src/protocols/aave.js", async (orig) => ({
-  ...(await orig<typeof import("../src/protocols/aave.js")>()),
-  aaveReserves: async () => ({ oracle: "0x0000000000000000000000000000000000000001" }),
-  baseClient: { readContract: async () => [2000n * 10n ** 8n, 10n ** 8n] },
-}));
+// The oracle behind fetchPrices: Rhea's price for NEAR, or Rhea is down (null).
+const oracle = vi.hoisted(() => ({ near: null as number | null }));
 vi.mock("../src/protocols/rhea.js", async (orig) => ({
   ...(await orig<typeof import("../src/protocols/rhea.js")>()),
   rheaAssets: async () => {
-    throw new Error("Rhea unavailable");
+    if (oracle.near == null) throw new Error("Rhea unavailable");
+    return { "wrap.near": { price: { usd: oracle.near } } };
   },
 }));
 
@@ -110,12 +106,20 @@ describe("coin prices: DefiLlama first, CoinGecko as the fallback", () => {
     expect(await coinPrices(["near", "tiny-coin"])).toEqual({ near: { usd: 3.5, change24h: null, source: "defillama" } });
   });
 
-  it("backs up the oracles: they come first, DefiLlama fills in only what they miss", async () => {
+  it("takes NEAR from Rhea's oracle, and ETH and USDC from the market", async () => {
+    oracle.near = 3.52;
     serve({ llama: { "coingecko:near": 3.5, "coingecko:ethereum": 1999, "coingecko:usd-coin": 0.999 } });
     const p = await fetchPrices(null);
-    expect([p.ETH?.usd, p.ETH?.source, p.USDC?.usd, p.USDC?.source]).toEqual([2000, "aave-oracle", 1, "aave-oracle"]);
+    expect([p.NEAR?.usd, p.NEAR?.source]).toEqual([3.52, "rhea-pyth"]);
+    expect([p.ETH?.usd, p.ETH?.source, p.USDC?.usd, p.USDC?.source]).toEqual([1999, "defillama", 0.999, "defillama"]);
+    expect(new Set(asked("coins.llama.fi").flatMap(keysIn))).toEqual(new Set(["coingecko:ethereum", "coingecko:usd-coin"]));
+  });
+
+  it("falls back to the market for NEAR when Rhea is down", async () => {
+    oracle.near = null;
+    serve({ llama: { "coingecko:near": 3.5, "coingecko:ethereum": 1999, "coingecko:usd-coin": 0.999 } });
+    const p = await fetchPrices(null);
     expect([p.NEAR?.usd, p.NEAR?.source]).toEqual([3.5, "defillama"]);
-    expect(new Set(asked("coins.llama.fi").flatMap(keysIn))).toEqual(new Set(["coingecko:near"]));
   });
 });
 

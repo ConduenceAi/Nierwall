@@ -42,7 +42,7 @@ function printSnapshot(s: Snapshot) {
 }
 
 function printPosition(p: LendingPosition) {
-  const name = p.protocol === "rhea" ? "Rhea · NEAR" : "Aave V3 · Base";
+  const name = "Rhea · NEAR";
   const hf = p.healthFactor == null ? "no debt" : p.healthFactor.toFixed(3);
   const col = p.collateral.map((x) => `${x.amount.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${x.symbol}`).join(", ");
   const debt = p.debt.map((x) => `${x.amount.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${x.symbol}`).join(", ");
@@ -134,7 +134,7 @@ async function main() {
         ],
       },
       {
-        wallets: config, positions: after.data.snapshot.positions, aave: after.data.aave, rheaToken: (sym) => rheaTokenBySymbol(assets, sym),
+        wallets: config, positions: after.data.snapshot.positions, rheaToken: (sym) => rheaTokenBySymbol(assets, sym),
         holdings, tokens, watches: store.listWatches("active"), protectedWallets: [], quote: dryQuote, simulated: false,
       },
     );
@@ -149,7 +149,7 @@ async function main() {
     }
   }
   const sol = await coinPrices(["solana"]).catch(() => ({}) as Record<string, CoinPrice>);
-  if (sol.solana) console.log(c.dim(`  Token watches work for any coin, e.g. SOL is $${sol.solana.usd}${sol.solana.change24h != null ? ` (${sol.solana.change24h.toFixed(1)}% in 24h)` : ""}, from ${sol.solana.source === "defillama" ? "DefiLlama" : "CoinGecko"}.`));
+  if (sol.solana) console.log(c.dim(`  Token watches work for any coin, e.g. SOL is $${sol.solana.usd.toLocaleString("en-US", { maximumFractionDigits: 2 })}${sol.solana.change24h != null ? ` (${sol.solana.change24h.toFixed(1)}% in 24h)` : ""}, from ${sol.solana.source === "defillama" ? "DefiLlama" : "CoinGecko"}.`));
   console.log("");
 }
 

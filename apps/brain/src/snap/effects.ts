@@ -16,7 +16,7 @@ const APPROVAL_FOR_ALL = "0x17307eab39ab6107e8899845ad3d59bd9653f200f220920489ca
 /** Spenders users commonly approve. Unknown is not "bad", just worth a look. */
 export const KNOWN_SPENDERS: Record<string, string> = {
   "0x000000000022d473030f116ddee9f6b43ac78ba3": "Permit2 (Uniswap)", // same address on every chain
-  [ADDRESSES.base.aavePool.toLowerCase()]: "Aave V3 Pool",
+  "0xa238dd80c259a72e81d7e4664a9801593f98d1c5": "Aave V3 Pool (Base)",
   "0x6ff5693b99212da76ad316178a184ab56d299b43": "Uniswap Universal Router",
 };
 

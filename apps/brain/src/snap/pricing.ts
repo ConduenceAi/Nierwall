@@ -1,7 +1,6 @@
-import { getAddress } from "viem";
+import { erc20Abi, getAddress } from "viem";
 import { evmClient, type EvmChain } from "../chains.js";
 import { env } from "../config.js";
-import { erc20Abi } from "../protocols/aave.js";
 import { llamaPrices } from "../sources/defillama.js";
 import { intentsTokens } from "../tokens.js";
 

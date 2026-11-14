@@ -49,7 +49,7 @@ belongs to the orb only while it's open.
 
 ### 2. It keeps watch and brings you a fix
 
-A background service (the "brain") checks your loans on **Rhea** (NEAR) and **Aave V3** (Base) every minute, and
+A background service (the "brain") checks your loans on **Rhea**, NEAR's lending protocol, every minute, and
 every 20 seconds when you're close to a limit. It sees every token in your wallets on NEAR and ten EVM networks (see
 [Chains and NEAR Intents](#chains-and-near-intents)). It can watch:
 
@@ -85,12 +85,12 @@ and there's enough time to send. A review page then hands each step to your own 
 
 Ask "how do I make my loans safer?" or "rebalance me toward 30% stablecoins". The AI looks at every token in every
 wallet and your loans, then proposes up to two plans: swaps, moves between your own wallets (across chains too),
-repaying or adding collateral on Aave or Rhea. It also decides how much each plan is worth paying in fees.
+repaying or adding collateral on Rhea. It also decides how much each plan is worth paying in fees.
 
 The AI never does the math. Your Mac replays each step against your real balances, your loans and live NEAR
 Intents quotes, and rejects anything that doesn't add up: spending more than you hold, a loan pushed near
 liquidation, a reserve you set, a cost above what the plan is worth. A plan can only move money between your own
-wallets, Aave, Rhea and NEAR Intents; there's no way to name an outside address. What passes shows up as a card:
+wallets, Rhea and NEAR Intents; there's no way to name an outside address. What passes shows up as a card:
 loan health before and after, your mix before and after, the cost, and **Review & sign**.
 
 ### 4. It checks transactions before you sign
@@ -109,8 +109,6 @@ Aurora) or that Nierwall doesn't know yet, it still reads transfers and approval
   back, or a transaction that would fail and waste the fee.
 - **Hidden permissions:** an unlimited approval or "approve all" to an unfamiliar contract tucked inside a bigger
   transaction, the usual wallet-drainer trick.
-- **Aave actions:** your health factor before and after. "Withdraw all cbBTC" on a real position shows
-  1.62 → 0.14 and is marked critical.
 - **Transfers:** checks that a deposit matches the Nierwall quote you're paying, and warns when you send to an
   address that isn't yours or go below a balance you said to keep.
 - **NEAR, from MetaMask:** NEAR lets MetaMask accounts sign NEAR transactions, and the Snap reads them too:
@@ -140,7 +138,7 @@ flowchart LR
   brain -- a fix to sign --> review
   review -- you approve each step --> wallets([Your wallets])
   brain <--> ai[NEAR AI Cloud<br/>private model in a TEE]
-  brain --> chains[Rhea and Aave<br/>loans and prices]
+  brain --> chains[Rhea<br/>loans and prices]
   brain --> intents[NEAR Intents<br/>cross-chain quotes]
   brain --> tg[Telegram<br/>alerts]
   mem --> oai[OpenAI<br/>turns chats into facts]
@@ -168,7 +166,7 @@ flowchart LR
 | | Networks |
 |---|---|
 | **Your wallets:** balances, portfolio mix, spare cash for fixes | NEAR, plus the ten EVM networks NEAR Intents can move money on: Ethereum, Base, Arbitrum, OP Mainnet, Polygon, BNB Chain, Gnosis, Avalanche, Berachain and Scroll |
-| **Loans** | Rhea on NEAR, Aave V3 on Base |
+| **Loans** | Rhea on NEAR |
 | **Moving money** in fixes and plans | Between any of those networks, through NEAR Intents |
 | **Checks before you sign** (the Snap) | All of the above, plus Celo, Linea, Sonic, Unichain, Mantle, zkSync Era and Aurora: 17 EVM networks and NEAR |
 
@@ -227,7 +225,7 @@ pnpm demo
 ```
 
 You need Node 24+ and pnpm 10. The demo reads three public accounts (read-only; they aren't ours) and shows a
-real Rhea loan and a real Aave loan with their live health. Then it sets three watches and simulates a NEAR -9% /
+real Rhea loan with its live health, and wallets on several networks. Then it sets two watches and simulates a NEAR -9% /
 ETH -10% drop. You see the alerts, the fixes with a live NEAR Intents quote, and the recovery. Everything except
 the price drop is live mainnet data.
 
@@ -279,7 +277,7 @@ Tests: `pnpm test` runs 62 brain tests, 4 of them against mainnet (`OFFLINE=1 pn
 
 Working on live mainnet data:
 
-- loan and price readers (Rhea matches Rhea's own SDK exactly, Aave within 2%)
+- loan and price readers (Rhea matches Rhea's own SDK exactly)
 - watches and alerts
 - fix planning with live NEAR Intents quotes
 - every token in every wallet on NEAR and ten EVM networks, valued, and the portfolio mix
@@ -301,11 +299,10 @@ The full tracker is in [docs/PROGRESS.md](docs/PROGRESS.md). The original design
 ### Known limits
 
 - Checks pause while your Mac sleeps or is offline, because the brain runs on your Mac.
-- Automatic fixes on alerts are Rhea-only; for Aave, ask the advisor for a plan (repay, supply and withdraw are built).
 - Adding or withdrawing Rhea collateral opens the Rhea app instead of building the transaction.
 - Wallets are read on NEAR and the ten EVM networks above, for the tokens NEAR Intents lists. Solana, Bitcoin and
   other non-EVM chains, and EVM networks NEAR Intents added recently (such as Monad), aren't counted yet.
-- Loans are read on Rhea (NEAR) and Aave V3 on Base; Aave on other networks isn't read yet.
+- Loans: Rhea only. Aave support was taken out for now, to keep the focus on NEAR.
 - Installing a local Snap, and MetaMask's full-screen critical warning, need MetaMask Flask.
 
 ## Project layout

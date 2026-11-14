@@ -59,8 +59,6 @@ export type Wallet = z.infer<typeof WalletSchema>;
 
 const WalletsFile = z.object({
   wallets: z.array(WalletSchema),
-  /** Labels of EVM wallets whose Aave V3 position on Base should be watched. */
-  watchAave: z.array(z.string()).default([]),
   /** Labels of wallets whose Rhea (NEAR) position should be watched. */
   watchRhea: z.array(z.string()).default([]),
 });
@@ -72,12 +70,11 @@ export type WalletsConfig = z.infer<typeof WalletsFile>;
  */
 export const FIXTURE_WALLETS: WalletsConfig = {
   wallets: [
-    { label: "Demo Base wallet", chain: "evm", address: "0xABBEa473fdDE4409C6A1F0c7C527C1bDa68E6C24", role: "public account, read-only demo fixture" },
+    { label: "Demo EVM wallet", chain: "evm", address: "0xABBEa473fdDE4409C6A1F0c7C527C1bDa68E6C24", role: "public account, read-only demo fixture" },
     { label: "Demo NEAR wallet", chain: "near", address: "luckyjacket2695.near", role: "public account, read-only demo fixture" },
-    // A public USDC holder on Base (Aave's aUSDC reserve), so the demo can show a cross-chain NEAR Intents fix.
+    // A public USDC holder on Base, so the demo can show a cross-chain NEAR Intents fix.
     { label: "Demo cash wallet", chain: "evm", address: "0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB", role: "public account, read-only demo fixture" },
   ],
-  watchAave: ["Demo Base wallet"],
   watchRhea: ["Demo NEAR wallet"],
 };
 
@@ -89,18 +86,12 @@ export function loadWallets(): { config: WalletsConfig; source: "user" | "fixtur
 }
 
 export const ADDRESSES = {
-  base: {
-    aavePool: "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5",
-    usdc: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-    weth: "0x4200000000000000000000000000000000000006",
-  },
   near: {
     rhea: "contract.main.burrow.near",
     usdc: "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
     wnear: "wrap.near",
   },
   intents: {
-    baseUsdc: "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
     nearUsdc: "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
   },
 } as const;

@@ -31,7 +31,7 @@ const coinName = (p: Record<string, any>) => (p.coinId && p.name ? `${p.symbol} 
 
 function protocolName(positionId: string) {
   const [proto, label] = positionId.split(":");
-  const name = proto === "rhea" ? "Rhea · NEAR" : proto === "aave" ? "Aave V3 · Base" : proto ?? positionId;
+  const name = proto === "rhea" ? "Rhea · NEAR" : proto ?? positionId;
   return { name, label: label ?? "" };
 }
 

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import * as rheaSdk from "@rhea-finance/cross-chain-sdk";
-import { readAave, simulateAave } from "../src/protocols/aave.js";
 import { readRhea, previewRheaRepay, repayToReach, rheaAssets } from "../src/protocols/rhea.js";
 import { fetchPrices } from "../src/sources/prices.js";
 
@@ -8,7 +7,7 @@ import { fetchPrices } from "../src/sources/prices.js";
 const live = process.env.OFFLINE ? describe.skip : describe;
 
 live("live readers", () => {
-  it("prices: ETH, NEAR, USDC from Pyth", async () => {
+  it("prices: NEAR from Rhea's oracle, ETH and USDC from the market", async () => {
     const p = await fetchPrices(null);
     expect(p.ETH?.usd).toBeGreaterThan(100);
     expect(p.NEAR?.usd).toBeGreaterThan(0.1);
@@ -36,18 +35,5 @@ live("live readers", () => {
       expect(shocked.position.healthFactor!).toBeLessThan(calm.position.healthFactor!);
     }
     expect(shocked.position.simulated || !calm.position.collateral.some((c) => c.symbol.includes("NEAR"))).toBe(true);
-  }, 90_000);
-
-  it("aave: our weighted health matches the protocol's", async () => {
-    const d = await readAave("fixture", "0xABBEa473fdDE4409C6A1F0c7C527C1bDa68E6C24", null);
-    expect(d.onChainHealth).not.toBeNull();
-    const col = d.position.collateral.reduce((s, c) => s + c.usd * c.weight, 0);
-    const debt = d.position.debt.reduce((s, x) => s + x.usd, 0);
-    // Within 2%: interest accrual and eMode can differ slightly from the summary call.
-    expect(col / debt).toBeGreaterThan(d.onChainHealth! * 0.98);
-    expect(col / debt).toBeLessThan(d.onChainHealth! * 1.02);
-    const c0 = d.position.collateral[0]!;
-    const sim = simulateAave(d, "withdraw", c0.token, c0.amount * 0.1);
-    expect(sim.supported && sim.healthAfter! < (d.position.healthFactor ?? 0)).toBe(true);
   }, 90_000);
 });

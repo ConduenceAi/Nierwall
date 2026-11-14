@@ -14,39 +14,18 @@ export function applyShock(sym: Symbol, usd: number, scenario: ScenarioState | n
 type RawPrices = Partial<Record<Symbol, { usd: number; source: PriceInfo["source"] }>>;
 
 /**
- * Oracle prices that actually drive liquidations: Chainlink via Aave's oracle on Base for ETH and USDC,
- * Pyth via Rhea on NEAR for NEAR. Loaded lazily to avoid import cycles.
+ * The oracle price that drives Rhea's liquidations: Pyth, as Rhea reads it, for NEAR. ETH and USDC come from the
+ * market. Loaded lazily to avoid import cycles.
  */
 async function oraclePrices(): Promise<RawPrices> {
   const out: RawPrices = {};
-  const [{ aaveReserves, baseClient }, { rheaAssets }, { ADDRESSES }] = await Promise.all([
-    import("../protocols/aave.js"),
-    import("../protocols/rhea.js"),
-    import("../config.js"),
-  ]);
-  const { parseAbi, formatUnits, getAddress } = await import("viem");
-  const oracleAbi = parseAbi(["function getAssetsPrices(address[] assets) view returns (uint256[])"]);
-  const [aave, rhea] = await Promise.allSettled([
-    (async () => {
-      const { oracle } = await aaveReserves();
-      const [eth, usdc] = await baseClient.readContract({
-        address: oracle,
-        abi: oracleAbi,
-        functionName: "getAssetsPrices",
-        args: [[getAddress(ADDRESSES.base.weth), getAddress(ADDRESSES.base.usdc)]],
-      });
-      return { eth: Number(formatUnits(eth ?? 0n, 8)), usdc: Number(formatUnits(usdc ?? 0n, 8)) };
-    })(),
-    rheaAssets(),
-  ]);
-  if (aave.status === "fulfilled") {
-    if (aave.value.eth > 0) out.ETH = { usd: aave.value.eth, source: "aave-oracle" };
-    if (aave.value.usdc > 0) out.USDC = { usd: aave.value.usdc, source: "aave-oracle" };
-  } else log.warn("aave oracle unavailable", { err: String(aave.reason).slice(0, 160) });
-  if (rhea.status === "fulfilled") {
-    const near = Number(rhea.value[ADDRESSES.near.wnear]?.price?.usd ?? 0);
+  const [{ rheaAssets }, { ADDRESSES }] = await Promise.all([import("../protocols/rhea.js"), import("../config.js")]);
+  try {
+    const near = Number((await rheaAssets())[ADDRESSES.near.wnear]?.price?.usd ?? 0);
     if (near > 0) out.NEAR = { usd: near, source: "rhea-pyth" };
-  } else log.warn("rhea prices unavailable", { err: String(rhea.reason).slice(0, 160) });
+  } catch (e) {
+    log.warn("rhea prices unavailable", { err: String(e).slice(0, 160) });
+  }
   return out;
 }
 

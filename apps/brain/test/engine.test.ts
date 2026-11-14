@@ -7,7 +7,7 @@ const watch = (kind: Watch["kind"], params: Record<string, unknown>): Watch => (
   id: "w", kind, label: "test", params, status: "active", source: "user", createdAt: "", confirmedAt: "",
 });
 const snap = (over: Partial<Snapshot> = {}): Snapshot => ({
-  takenAt: "", prices: { ETH: { symbol: "ETH", usd: 1800, publishTime: 0, source: "aave-oracle", simulated: false } },
+  takenAt: "", prices: { ETH: { symbol: "ETH", usd: 1800, publishTime: 0, source: "defillama", simulated: false } },
   positions: [{
     id: "rhea:NEAR wallet", protocol: "rhea", chain: "near", walletLabel: "NEAR wallet", collateral: [], debt: [],
     collateralUsd: 1000, debtUsd: 500, healthFactor: 1.4, liquidationDistance: 0.28, observedAt: "", simulated: false,

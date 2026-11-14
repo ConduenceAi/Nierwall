@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { encodeFunctionData, getAddress, type Hex } from "viem";
+import { encodeFunctionData, erc20Abi, getAddress, type Hex } from "viem";
 import { assetClass, type Plan, type PlanStep } from "../advisor/plans.js";
 import type { Brain } from "../brain.js";
 import { evmChain, evmClient, evmNetwork, networkName } from "../chains.js";
@@ -7,7 +7,6 @@ import { ADDRESSES, FIXTURE_WALLETS, type EvmNetwork, type Network, type Wallet 
 import { quote, swapStatus, type Quote } from "../intents/oneclick.js";
 import { logger } from "../log.js";
 import { usdcOn } from "../planner/fixes.js";
-import { erc20Abi, poolAbi } from "../protocols/aave.js";
 import { rheaAssets } from "../protocols/rhea.js";
 import { toRaw, type TokenInfo } from "../tokens.js";
 import type { FixOption } from "../types.js";
@@ -275,41 +274,19 @@ export class SignSessions {
         continue;
       }
 
-      if (ps.protocol === "rhea") {
-        if (ps.type === "repay" && ps.token.contract) {
-          push({
-            kind: "near", chain: "near", wallet: w.label, expectedSigner: w.address,
-            title: `Repay ${fmt(ps.amount)} ${ps.token.symbol} on Rhea`, detail: "Your NEAR wallet asks you to approve one transaction.",
-            nearTx: await rheaRepayTx(ps.protocolToken!, amountRaw),
-          });
-        } else {
-          push({
-            kind: "link", chain: "near", wallet: w.label, expectedSigner: null, link: "https://app.rhea.finance/",
-            title: ps.description, detail: "Nierwall can't build this Rhea transaction yet. Do it in the Rhea app, then mark it done here.",
-          });
-        }
-        continue;
-      }
-
-      // Aave V3 on Base: approve, then supply or repay; withdraw needs no approval.
-      const pool = getAddress(ADDRESSES.base.aavePool);
-      const asset = getAddress(ps.protocolToken!);
-      if (ps.type !== "withdraw") {
+      // Rhea: repay builds the transaction; collateral changes are done in the Rhea app.
+      if (ps.type === "repay" && ps.token.contract) {
         push({
-          kind: "evm", chain: "base", wallet: w.label, expectedSigner: signer,
-          title: `Allow Aave to use ${fmt(ps.amount)} ${ps.token.symbol}`, detail: "An approval for exactly this amount, not unlimited.",
-          evmTx: evmTx(8453, asset, encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [pool, amountRaw] })),
+          kind: "near", chain: "near", wallet: w.label, expectedSigner: w.address,
+          title: `Repay ${fmt(ps.amount)} ${ps.token.symbol} on Rhea`, detail: "Your NEAR wallet asks you to approve one transaction.",
+          nearTx: await rheaRepayTx(ps.protocolToken!, amountRaw),
+        });
+      } else {
+        push({
+          kind: "link", chain: "near", wallet: w.label, expectedSigner: null, link: "https://app.rhea.finance/",
+          title: ps.description, detail: "Nierwall can't build this Rhea transaction yet. Do it in the Rhea app, then mark it done here.",
         });
       }
-      const data: Hex =
-        ps.type === "repay" ? encodeFunctionData({ abi: poolAbi, functionName: "repay", args: [asset, amountRaw, 2n, signer as `0x${string}`] })
-        : ps.type === "add_collateral" ? encodeFunctionData({ abi: poolAbi, functionName: "supply", args: [asset, amountRaw, signer as `0x${string}`, 0] })
-        : encodeFunctionData({ abi: poolAbi, functionName: "withdraw", args: [asset, amountRaw, signer as `0x${string}`] });
-      push({
-        kind: "evm", chain: "base", wallet: w.label, expectedSigner: signer, title: ps.description,
-        detail: ps.type === "withdraw" ? "Nierwall checked the loan stays above your limits after this." : "Uses the approval from the step before.",
-        evmTx: evmTx(8453, pool, data),
-      });
     }
 
     if (links.size) session.privacyNote = `This plan links ${[...links].join(", ")} on-chain.`;

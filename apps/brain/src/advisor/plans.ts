@@ -3,15 +3,14 @@ import { z } from "zod";
 import { networkName } from "../chains.js";
 import { EVM_NETWORKS, type Network, type Wallet, type WalletsConfig } from "../config.js";
 import type { Holding } from "../holdings.js";
-import type { AaveAccountDetail } from "../protocols/aave.js";
 import { findToken, type TokenInfo } from "../tokens.js";
 import type { Allocation, LendingPosition, Watch } from "../types.js";
 
 /*
  * The advisor's safety net. The AI (in a TEE) proposes plans as plain steps; this file replays them on the
  * Mac against real balances, loans and live quotes, and rejects anything that doesn't add up. Plans can
- * only move funds between the user's own wallets (on any network NEAR Intents supports), into or out of their Aave
- * and Rhea loans, or through NEAR Intents swaps. There is no field for an outside address.
+ * only move funds between the user's own wallets (on any network NEAR Intents supports), into or out of their Rhea
+ * loans, or through NEAR Intents swaps. There is no field for an outside address.
  */
 
 const amountFields = {
@@ -26,9 +25,9 @@ const NetworkName = z.enum([...EVM_NETWORKS, "near"]);
 export const PlanAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("swap"), wallet: z.string(), from: z.string(), to: z.string(), chain: NetworkName.optional(), toChain: NetworkName.optional(), ...amountFields }),
   z.object({ type: z.literal("move"), fromWallet: z.string(), toWallet: z.string(), token: z.string(), toToken: z.string().optional(), fromChain: NetworkName.optional(), toChain: NetworkName.optional(), ...amountFields }),
-  z.object({ type: z.literal("repay"), wallet: z.string(), protocol: z.enum(["aave", "rhea"]), token: z.string(), ...amountFields }),
-  z.object({ type: z.literal("add_collateral"), wallet: z.string(), protocol: z.enum(["aave", "rhea"]), token: z.string(), ...amountFields }),
-  z.object({ type: z.literal("withdraw"), wallet: z.string(), protocol: z.enum(["aave", "rhea"]), token: z.string(), ...amountFields }),
+  z.object({ type: z.literal("repay"), wallet: z.string(), protocol: z.enum(["rhea"]), token: z.string(), ...amountFields }),
+  z.object({ type: z.literal("add_collateral"), wallet: z.string(), protocol: z.enum(["rhea"]), token: z.string(), ...amountFields }),
+  z.object({ type: z.literal("withdraw"), wallet: z.string(), protocol: z.enum(["rhea"]), token: z.string(), ...amountFields }),
 ]);
 export type PlanAction = z.infer<typeof PlanAction>;
 
@@ -74,8 +73,8 @@ export interface PlanStep {
   /** Token units expected and guaranteed to arrive (swaps and moves). */
   expectedOut?: number;
   minOut?: number;
-  protocol?: "aave" | "rhea";
-  /** Aave reserve address or Rhea token id. */
+  protocol?: "rhea";
+  /** Rhea token id. */
   protocolToken?: string;
 }
 
@@ -108,8 +107,6 @@ export interface QuoteEstimate {
 export interface PlanContext {
   wallets: WalletsConfig;
   positions: LendingPosition[];
-  /** Aave detail by wallet label (reserves and prices), for collateral that isn't in the position yet. */
-  aave: Map<string, AaveAccountDetail>;
   /** Rhea token lookup by symbol, for collateral that isn't in the position yet. */
   rheaToken: (symbol: string) => { tokenId: string; symbol: string; usd: number; vr: number; collateral: boolean } | null;
   holdings: Holding[];
@@ -131,13 +128,13 @@ interface Entry {
 }
 interface LoanSim {
   id: string;
-  protocol: "aave" | "rhea";
+  protocol: "rhea";
   wallet: string;
   col: Entry[];
   debt: Entry[];
 }
 
-/** Health with the protocols' own weights: Σ collateral × weight ÷ Σ debt ÷ weight (Aave debt weight is 1). */
+/** Health with Rhea's own weights: Σ collateral × weight ÷ Σ debt ÷ weight. */
 export function loanHealth(l: { col: Entry[]; debt: Entry[] }): number | null {
   const col = l.col.reduce((s, c) => s + c.amount * c.price * c.weight, 0);
   const debt = l.debt.reduce((s, d) => s + (d.weight > 0 ? (d.amount * d.price) / d.weight : d.amount * d.price), 0);
@@ -149,7 +146,7 @@ const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 /** Left in each network's own coin to pay network fees. */
 const GAS_RESERVE: Record<Network, number> = { near: 0.05, eth: 0.002, base: 0.0002, arb: 0.0002, op: 0.0002, scroll: 0.0002, pol: 0.5, bsc: 0.001, gnosis: 0.05, avax: 0.02, bera: 0.05 };
 /** Where each protocol's loans live. */
-const LOAN_NETWORK: Record<"aave" | "rhea", Network> = { aave: "base", rhea: "near" };
+const LOAN_NETWORK: Record<"rhea", Network> = { rhea: "near" };
 
 /** Replays a proposed plan against current data. Returns the checked plan, or what's wrong with it. */
 export async function checkPlan(input: PlanInput, ctx: PlanContext): Promise<PlanCheck> {
@@ -332,11 +329,11 @@ export async function checkPlan(input: PlanInput, ctx: PlanContext): Promise<Pla
     }
     const loan = loans.get(`${a.protocol}:${w.label}`);
     if (!loan) {
-      errors.push(`${what}: Nierwall doesn't watch a ${a.protocol === "aave" ? "Aave" : "Rhea"} loan for ${w.label}.`);
+      errors.push(`${what}: Nierwall doesn't watch a Rhea loan for ${w.label}.`);
       continue;
     }
     const loanNet = LOAN_NETWORK[a.protocol];
-    const protoName = a.protocol === "aave" ? "Aave" : "Rhea";
+    const protoName = "Rhea";
     const sym = a.protocol === "rhea" && same(a.token, "NEAR") ? "wNEAR" : a.token;
 
     if (a.type === "repay") {
@@ -360,22 +357,12 @@ export async function checkPlan(input: PlanInput, ctx: PlanContext): Promise<Pla
     if (a.type === "add_collateral") {
       let entry = loan.col.find((x) => same(x.symbol, sym));
       if (!entry) {
-        if (a.protocol === "aave") {
-          const r = ctx.aave.get(w.label)?.reserves.find((x) => same(x.symbol, sym));
-          const p = r ? ctx.aave.get(w.label)?.prices[r.asset.toLowerCase()] : undefined;
-          if (!r || !r.collateralEnabled || !p) {
-            errors.push(`${what}: ${a.token} can't be Aave collateral on Base.`);
-            continue;
-          }
-          entry = { symbol: r.symbol, token: r.asset, amount: 0, price: p, weight: r.liquidationThreshold };
-        } else {
-          const r = ctx.rheaToken(sym);
-          if (!r || !r.collateral || !(r.usd > 0)) {
-            errors.push(`${what}: ${a.token} can't be Rhea collateral.`);
-            continue;
-          }
-          entry = { symbol: r.symbol, token: r.tokenId, amount: 0, price: r.usd, weight: r.vr };
+        const r = ctx.rheaToken(sym);
+        if (!r || !r.collateral || !(r.usd > 0)) {
+          errors.push(`${what}: ${a.token} can't be Rhea collateral.`);
+          continue;
         }
+        entry = { symbol: r.symbol, token: r.tokenId, amount: 0, price: r.usd, weight: r.vr };
         loan.col.push(entry);
       }
       const tok = tokenOn(loanNet, entry.symbol, what);
@@ -385,8 +372,8 @@ export async function checkPlan(input: PlanInput, ctx: PlanContext): Promise<Pla
       entry.amount += amount;
       signers.add(`${w.label}\u0000${loanNet}`);
       steps.push({
-        n, type: "add_collateral", chain: loanNet, wallet: w.label, execution: a.protocol === "aave" ? "sign" : "manual", token: tok, amount, protocol: a.protocol, protocolToken: entry.token,
-        description: `Add ${fmt(amount)} ${entry.symbol} as ${protoName} collateral from ${w.label}${a.protocol === "rhea" ? " (in the Rhea app)" : ""}`,
+        n, type: "add_collateral", chain: loanNet, wallet: w.label, execution: "manual", token: tok, amount, protocol: a.protocol, protocolToken: entry.token,
+        description: `Add ${fmt(amount)} ${entry.symbol} as ${protoName} collateral from ${w.label} (in the Rhea app)`,
       });
       continue;
     }
@@ -406,8 +393,8 @@ export async function checkPlan(input: PlanInput, ctx: PlanContext): Promise<Pla
     credit(w, tok, amount);
     signers.add(`${w.label}\u0000${loanNet}`);
     steps.push({
-      n, type: "withdraw", chain: loanNet, wallet: w.label, execution: a.protocol === "aave" ? "sign" : "manual", token: tok, amount, protocol: a.protocol, protocolToken: c.token,
-      description: `Withdraw ${fmt(amount)} ${c.symbol} of ${protoName} collateral to ${w.label}${a.protocol === "rhea" ? " (in the Rhea app)" : ""}`,
+      n, type: "withdraw", chain: loanNet, wallet: w.label, execution: "manual", token: tok, amount, protocol: a.protocol, protocolToken: c.token,
+      description: `Withdraw ${fmt(amount)} ${c.symbol} of ${protoName} collateral to ${w.label} (in the Rhea app)`,
     });
   }
 
@@ -418,7 +405,7 @@ export async function checkPlan(input: PlanInput, ctx: PlanContext): Promise<Pla
     const after = loanHealth(l);
     const floorWatch = ctx.watches.find((x) => x.kind === "health_below" && x.status === "active" && (x.params as Record<string, unknown>).positionId === id);
     const floor = floorWatch ? Number((floorWatch.params as Record<string, unknown>).threshold) : null;
-    const label = `${l.protocol === "aave" ? "Aave" : "Rhea"} · ${l.wallet}`;
+    const label = `Rhea · ${l.wallet}`;
     const changed = b == null ? after != null : after == null || Math.abs(after - b) > 1e-6;
     if (changed || steps.some((s) => s.protocol === l.protocol && s.wallet === l.wallet)) loanRows.push({ positionId: id, label, before: b, after, floor });
     if (after != null && after < 1.05 && (b == null || after < b)) errors.push(`${label}: health would fall to ${after.toFixed(2)}, too close to liquidation.`);

@@ -2,7 +2,6 @@ import type { Wallet, WalletsConfig } from "./config.js";
 import { allocationOf } from "./advisor/plans.js";
 import { readHoldings, type Holding } from "./holdings.js";
 import { logger } from "./log.js";
-import { readAave, type AaveAccountDetail } from "./protocols/aave.js";
 import { readRhea, type RheaAccountDetail } from "./protocols/rhea.js";
 import { coinPrices } from "./sources/coins.js";
 import { fetchPrices } from "./sources/prices.js";
@@ -13,7 +12,6 @@ const log = logger("portfolio");
 export interface SnapshotWithDetail {
   snapshot: Snapshot;
   /** Protocol detail kept in memory for previews and the Snap; never persisted with addresses. */
-  aave: Map<string, AaveAccountDetail>;
   rhea: Map<string, RheaAccountDetail>;
 }
 
@@ -44,7 +42,6 @@ export class Portfolio {
   /** One full refresh: prices, watched lending positions, every wallet's balances on every network, and watched coins. */
   async refresh(scenario: ScenarioState | null, coinIds: string[] = [], withAllocation = false): Promise<SnapshotWithDetail> {
     const errors: string[] = [];
-    const aave = new Map<string, AaveAccountDetail>();
     const rhea = new Map<string, RheaAccountDetail>();
 
     const prices: Snapshot["prices"] = await fetchPrices(scenario).catch((e) => {
@@ -56,11 +53,6 @@ export class Portfolio {
     let coins: Snapshot["coins"] = {};
     if (coinIds.length) {
       jobs.push(coinPrices(coinIds).then((c) => void (coins = c)).catch((e) => void errors.push(`coin prices: ${String(e).slice(0, 120)}`)));
-    }
-    for (const label of this.wallets.watchAave) {
-      const w = this.wallet(label);
-      if (!w || w.chain !== "evm") continue;
-      jobs.push(readAave(label, w.address, scenario).then((d) => void aave.set(label, d)).catch((e) => void errors.push(`aave:${label}: ${String(e).slice(0, 120)}`)));
     }
     for (const label of this.wallets.watchRhea) {
       const w = this.wallet(label);
@@ -76,19 +68,19 @@ export class Portfolio {
     const balances: WalletBalance[] = h.holdings.map((x) => ({ walletLabel: x.walletLabel, chain: x.chain, symbol: x.symbol, amount: x.amount, usd: x.usd ?? 0 }));
     // A mix that's missing a network would set off allocation alerts for nothing, so it's left out when a read failed.
     let allocation: Snapshot["allocation"];
-    if (withAllocation && !h.errors.length) allocation = allocationOf(h.holdings, [...rhea.values(), ...aave.values()].map((d) => d.position));
+    if (withAllocation && !h.errors.length) allocation = allocationOf(h.holdings, [...rhea.values()].map((d) => d.position));
     if (errors.length) log.warn("refresh had errors", { count: errors.length, first: errors[0] });
 
     const snapshot: Snapshot = {
       takenAt: new Date().toISOString(),
       prices,
-      positions: [...rhea.values(), ...aave.values()].map((d) => d.position),
+      positions: [...rhea.values()].map((d) => d.position),
       balances,
       coins,
       allocation,
       errors,
       scenario,
     };
-    return { snapshot, aave, rhea };
+    return { snapshot, rhea };
   }
 }
