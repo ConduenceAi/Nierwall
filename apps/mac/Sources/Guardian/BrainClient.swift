@@ -13,6 +13,7 @@ final class BrainClient: ObservableObject {
     @Published var positions: [PositionCard] = []
     @Published var thinking = false
     @Published var connections: Connections?
+    @Published var tokens: TokenView?
 
     var onAlert: ((AlertCard, [Card]) -> Void)?
     var onReply: ((Reply) -> Void)?
@@ -148,6 +149,12 @@ final class BrainClient: ObservableObject {
         positions = decoded.compactMap { if case .position(let p) = $0 { return p } else { return nil } }
     }
 
+    /// The tokens in your own wallets, for the Tokens view (the brain caches them for 2 minutes).
+    func loadTokens() async {
+        guard let obj = await request("GET", "/api/tokens"), obj["error"] == nil, let d = try? JSONSerialization.data(withJSONObject: obj) else { return }
+        tokens = try? JSONDecoder().decode(TokenView.self, from: d)
+    }
+
     func loadConnections() async {
         guard let obj = await request("GET", "/api/connections"), let d = try? JSONSerialization.data(withJSONObject: obj) else { return }
         connections = try? JSONDecoder().decode(Connections.self, from: d)
@@ -180,12 +187,9 @@ final class BrainClient: ObservableObject {
         await loadConnections()
     }
 
-    /// Turns the demo accounts or transaction safety on or off.
-    func setFeature(demo: Bool? = nil, transactionSafety: Bool? = nil) async {
-        var body: [String: Any] = [:]
-        if let demo { body["demo"] = demo }
-        if let transactionSafety { body["transactionSafety"] = transactionSafety }
-        guard let obj = await request("POST", "/api/settings", body: body), let d = try? JSONSerialization.data(withJSONObject: obj) else { return }
+    /// Turns transaction safety on or off.
+    func setFeature(transactionSafety: Bool) async {
+        guard let obj = await request("POST", "/api/settings", body: ["transactionSafety": transactionSafety]), let d = try? JSONSerialization.data(withJSONObject: obj) else { return }
         connections = try? JSONDecoder().decode(Connections.self, from: d)
     }
 

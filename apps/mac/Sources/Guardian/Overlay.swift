@@ -376,6 +376,14 @@ enum OverlayPreviews {
         brain.connection = .connected
         brain.connections = try? JSONDecoder().decode(Connections.self, from: Data(sampleConnections.utf8))
         brain.status = try? JSONDecoder().decode(BrainStatus.self, from: Data(sampleStatus.utf8))
+        brain.tokens = try? JSONDecoder().decode(TokenView.self, from: Data(sampleTokens.utf8))
+        brain.positions = [try? JSONDecoder().decode(PositionCard.self, from: Data("""
+        {"positionId":"rhea:Savings","title":"Rhea · NEAR","wallet":"Savings","health":2.55,"floor":null,"liquidationDistance":null,
+         "collateralUsd":1.61,"debtUsd":0.35,
+         "supplied":[{"symbol":"wNEAR","amount":0.5,"usd":1.61,"apr":0.0033,"collateral":true}],
+         "borrowed":[{"symbol":"ZEC","amount":0.0001035,"usd":0.09,"apr":0.0102,"collateral":false},{"symbol":"wNEAR","amount":0.0802,"usd":0.26,"apr":0.025,"collateral":false}],
+         "observedAt":"","simulated":false}
+        """.utf8))].compactMap { $0 }
         brain.items = [
             ChatItem(role: .user, text: "How's my Rhea loan?"),
             ChatItem(role: .assistant, text: "Savings is at health 1.41, above your 1.30 floor. NEAR would have to fall 29% to liquidate it.", via: "near-ai"),
@@ -396,13 +404,39 @@ enum OverlayPreviews {
             try? rep.representation(using: .png, properties: [:])?.write(to: dir.appendingPathComponent("\(name).png"))
             print("wrote \(name).png")
         }
+        // The whole wallets view, taller than the panel, with amounts shown and hidden.
+        for hidden in [false, true] {
+            UserDefaults.standard.set(hidden, forKey: "hideAmounts")
+            let view = ConnectionsView(brain: brain, linkTelegram: {}).padding(14).frame(width: 390).background(.black)
+                .environment(\.colorScheme, .dark).tint(Palette.blue)
+            let host = NSHostingView(rootView: view)
+            host.frame = NSRect(x: 0, y: 0, width: 390, height: 820)
+            let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+            window.appearance = NSAppearance(named: .darkAqua)
+            window.contentView = host
+            RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+            guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { continue }
+            host.cacheDisplay(in: host.bounds, to: rep)
+            let name = hidden ? "9-wallets-hidden" : "8-wallets-full"
+            try? rep.representation(using: .png, properties: [:])?.write(to: dir.appendingPathComponent("\(name).png"))
+            print("wrote \(name).png")
+        }
+        UserDefaults.standard.removeObject(forKey: "hideAmounts")
     }
+
+    private static let sampleTokens = """
+    {"tokens":[{"symbol":"USDC","chain":"base","network":"Base","amount":1250.5,"usd":1250.1},
+               {"symbol":"NEAR","chain":"near","network":"NEAR","amount":39.06,"usd":129.7},
+               {"symbol":"SOL","chain":"sol","network":"Solana","amount":0.8,"usd":60.6},
+               {"symbol":"ETH","chain":"base","network":"Base","amount":0.0213,"usd":40.6}],
+     "totalUsd":8648,"loansUsd":7167,"complete":true}
+    """
 
     private static let sampleConnections = """
     {"wallets":[{"label":"Savings","chain":"near","address":"savings.near","app":"Meteor","connected":true,"rhea":{"healthFactor":1.41,"collateralUsd":5200,"debtUsd":2900}},
                 {"label":"Cash","chain":"evm","address":"0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB","app":null,"connected":false,"rhea":null},
                 {"label":"Trading","chain":"solana","address":"9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM","app":null,"connected":false,"rhea":null}],
-     "demo":false,"usingDemo":false,"transactionSafety":true}
+     "transactionSafety":true}
     """
 
     private static let sampleStatus = """

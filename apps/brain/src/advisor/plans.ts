@@ -490,12 +490,12 @@ export async function checkPlan(input: PlanInput, ctx: PlanContext): Promise<Pla
   return { ok: true, plan };
 }
 
-/** Value by asset class across wallets and loans (collateral minus debt), as shares of net worth. */
+/** Value by asset class across wallets and loans (deposits minus debt), as shares of net worth. */
 export function allocationOf(holdings: Holding[], positions: LendingPosition[]): Allocation {
   const byClass = Object.fromEntries(CLASSES.map((c) => [c, 0])) as Record<AssetClass, number>;
   for (const h of holdings) if (h.usd != null) byClass[assetClass(h.symbol)] += h.usd;
   for (const p of positions) {
-    for (const c of p.collateral) byClass[assetClass(c.symbol)] += c.usd;
+    for (const c of [...p.collateral, ...(p.supplied ?? [])]) byClass[assetClass(c.symbol)] += c.usd;
     for (const d of p.debt) byClass[assetClass(d.symbol)] -= d.usd;
   }
   const total = Object.values(byClass).reduce((s, v) => s + v, 0);

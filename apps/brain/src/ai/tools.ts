@@ -5,13 +5,13 @@ import type { Brain } from "../brain.js";
 import { publicConnections } from "../api/connections.js";
 import { networkName } from "../chains.js";
 import { EVM_NETWORKS } from "../config.js";
-import { isConnected, signBlocker } from "../connections.js";
+import { isConnected, signBlocker, walletAppName } from "../connections.js";
 import { fixesFor } from "../planner/fixes.js";
 import { rheaAssets, rheaTokenBySymbol } from "../protocols/rhea.js";
 import { riskClass } from "../protocols/risk.js";
 import { coinPrices, searchCoins, volatility } from "../sources/coins.js";
 import { tokenList } from "../tokens.js";
-import type { LendingPosition, Symbol, Watch, WatchKind } from "../types.js";
+import type { LendingPosition, Symbol, TokenAmount, Watch, WatchKind } from "../types.js";
 import { describeWatch } from "../watches/engine.js";
 import { alertCards, planCard, positionCard, type Card } from "./cards.js";
 import type { MemoryClient } from "../memory/client.js";
@@ -176,7 +176,7 @@ export const TOOL_DEFS = [
     type: "function" as const,
     function: {
       name: "get_connections",
-      description: "The user's wallets by nickname: NEAR or EVM, whether each is connected (Nierwall can send it transactions to approve, through the named wallet app) or only read (added by address), any Rhea loan found in them, and whether transaction safety and the demo accounts are on. Nierwall starts with no wallets.",
+      description: "The user's wallets by nickname: NEAR or EVM, whether each is connected (Nierwall can send it transactions to approve, through the named wallet app) or only read (added by address), any Rhea loan found in them, and whether transaction safety is on. Nierwall starts with no wallets.",
       parameters: { type: "object", properties: {}, additionalProperties: false },
     },
   },
@@ -208,17 +208,19 @@ export const TOOL_DEFS = [
     function: {
       name: "set_feature",
       description:
-        "Turn a feature on or off when the user asks. transaction_safety: Nierwall checks every transaction in MetaMask before they sign it, against their rules (it also needs the Nierwall Snap installed in MetaMask Flask; the result says how). " +
-        "demo_accounts: a demo portfolio to try Nierwall without adding a wallet; ignored once a wallet is added.",
+        "Turn a feature on or off when the user asks. transaction_safety: Nierwall checks every transaction in MetaMask before they sign it, against their rules (it also needs the Nierwall Snap installed in MetaMask Flask; the result says how).",
       parameters: {
         type: "object",
-        properties: { feature: { type: "string", enum: ["transaction_safety", "demo_accounts"] }, on: { type: "boolean" } },
+        properties: { feature: { type: "string", enum: ["transaction_safety"] }, on: { type: "boolean" } },
         required: ["feature", "on"],
         additionalProperties: false,
       },
     },
   },
 ];
+
+/** "0.0001035 ZEC ($0.09, 1.02% APR)": four significant digits, so small loans don't read as zero. */
+const tokenLine = (t: TokenAmount) => `${Number(t.amount.toPrecision(4))} ${t.symbol} (${t.usd.toFixed(2)}${t.apr != null ? `, ${(t.apr * 100).toFixed(2)}% APR` : ""})`;
 
 function summarizePosition(p: LendingPosition, watches: Watch[]) {
   const floor = watches.find((w) => w.kind === "health_below" && w.status === "active" && (w.params as Record<string, unknown>).positionId === p.id);
@@ -229,12 +231,15 @@ function summarizePosition(p: LendingPosition, watches: Watch[]) {
     positionId: p.id,
     protocol: "Rhea (NEAR)",
     wallet: p.walletLabel,
+    // Rhea keeps health per position: the main one, and one per LP token used as collateral.
+    position: !p.positionKey || p.positionKey === "REGULAR" ? "main" : `LP position ${p.positionKey}`,
     healthFactor: p.healthFactor == null ? null : Number(p.healthFactor.toFixed(3)),
     liquidationDropPct: p.liquidationDistance == null ? null : Number((p.liquidationDistance * 100).toFixed(1)),
-    collateralUsd: Math.round(p.collateralUsd),
-    debtUsd: Math.round(p.debtUsd),
-    collateral: p.collateral.map((c) => `${c.amount.toFixed(2)} ${c.symbol}`),
-    debt: p.debt.map((d) => `${d.amount.toFixed(2)} ${d.symbol}`),
+    collateralUsd: Number(p.collateralUsd.toFixed(2)),
+    debtUsd: Number(p.debtUsd.toFixed(2)),
+    collateral: p.collateral.map(tokenLine),
+    debt: p.debt.map(tokenLine),
+    ...(p.supplied?.length ? { suppliedNotCollateral: p.supplied.map(tokenLine) } : {}),
     simulated: p.simulated,
   };
 }
@@ -272,14 +277,14 @@ export async function runTool(name: string, args: Record<string, unknown>, ctx: 
   const watches = brain.store.listWatches();
   switch (name) {
     case "get_portfolio": {
-      if (!brain.wallets.wallets.length) return { wallets: [], note: "No wallets yet. Offer to add one (connect_wallet), or the demo accounts to try it (set_feature)." };
+      if (!brain.wallets.wallets.length) return { wallets: [], note: "No wallets yet. Offer to add one (connect_wallet)." };
       if (!snap) return { error: "No data yet" };
       for (const p of snap.positions) ctx.cards.push(positionCard(p, watches));
       const { holdings, errors } = await brain.portfolio.holdings(brain.scenario.get());
       const wallets = brain.wallets.wallets.map((w) => ({
         wallet: w.label,
         kind: w.chain === "evm" ? "EVM (same address on every EVM network)" : w.chain === "solana" ? "Solana (read only: can receive, can't send)" : "NEAR",
-        canSend: brain.usingDemo ? false : isConnected(w),
+        canSend: isConnected(w),
         role: w.role || undefined,
         tokens: holdings
           .filter((h) => h.walletLabel === w.label)
@@ -408,8 +413,7 @@ export async function runTool(name: string, args: Record<string, unknown>, ctx: 
         protectedWallets: brain.prefs.protectedWallets,
         quote: dryQuote,
         simulated: !!scenario?.active,
-        // The demo accounts can never be sent anything, so plans for them are only checked.
-        canSign: brain.usingDemo ? undefined : signBlocker,
+        canSign: signBlocker,
       });
       if (!result.ok) return result;
       brain.store.kvSet(`plan:${result.plan.id}`, result.plan);
@@ -417,12 +421,18 @@ export async function runTool(name: string, args: Record<string, unknown>, ctx: 
       return summarizePlan(result.plan);
     }
     case "get_connections": {
-      const c = publicConnections(brain);
+      const positions = brain.latestSnapshot()?.positions ?? [];
       return {
-        wallets: c.wallets.map((w) => ({ wallet: w.label, kind: w.chain === "evm" ? "EVM" : w.chain === "solana" ? "Solana" : "NEAR", connected: w.demo ? "demo portfolio: fixed amounts, nothing can be sent" : w.connected ? `yes, through ${w.app}` : "no, only read (added by address)", rheaLoan: w.rhea ? { health: w.rhea.healthFactor } : null })),
-        transactionSafety: c.transactionSafety ? "on" : "off",
-        demoAccounts: c.usingDemo ? "on (standing in until a wallet is added)" : c.demo ? "on, but your wallets are used" : "off",
-        note: c.wallets.length ? undefined : "No wallets yet.",
+        wallets: brain.wallets.wallets.map((w) => {
+          const loan = positions.find((p) => p.walletLabel === w.label);
+          return {
+            wallet: w.label, kind: w.chain === "evm" ? "EVM" : w.chain === "solana" ? "Solana" : "NEAR",
+            connected: isConnected(w) ? `yes, through ${walletAppName(w.via)}` : "no, only read (added by address)",
+            rheaLoan: loan ? { health: loan.healthFactor } : null,
+          };
+        }),
+        transactionSafety: brain.connections.transactionSafety ? "on" : "off",
+        note: brain.wallets.wallets.length ? undefined : "No wallets yet.",
       };
     }
     case "connect_wallet": {
@@ -448,16 +458,12 @@ export async function runTool(name: string, args: Record<string, unknown>, ctx: 
       return brain.removeWallet(String(args.label)) ? { removed: String(args.label) } : { error: "No wallet by that name. Call get_connections." };
     case "set_feature": {
       const on = args.on === true;
-      if (args.feature === "transaction_safety") {
-        brain.setFeatures({ transactionSafety: on });
-        if (!on) return { transactionSafety: "off" };
-        if (brain.snapSeenAt) return { transactionSafety: "on", snap: "installed: MetaMask shows Nierwall's check before every transaction" };
-        // Not seen yet: open the install page, which explains the one-time setup.
-        brain.emit("open", `http://127.0.0.1:${brain.apiPort}/snap/install`);
-        return { transactionSafety: "on", snap: "not installed yet", setup: "The install page is open in the browser. It needs MetaMask Flask, and `pnpm snap` running in the Nierwall folder; then press Install. After that MetaMask shows Nierwall's check before every transaction." };
-      }
-      brain.setFeatures({ demo: on });
-      return { demoAccounts: on ? "on" : "off" };
+      brain.setFeatures({ transactionSafety: on });
+      if (!on) return { transactionSafety: "off" };
+      if (brain.snapSeenAt) return { transactionSafety: "on", snap: "installed: MetaMask shows Nierwall's check before every transaction" };
+      // Not seen yet: open the install page, which explains the one-time setup.
+      brain.emit("open", `http://127.0.0.1:${brain.apiPort}/snap/install`);
+      return { transactionSafety: "on", snap: "not installed yet", setup: "The install page is open in the browser. It needs MetaMask Flask, and `pnpm snap` running in the Nierwall folder; then press Install. After that MetaMask shows Nierwall's check before every transaction." };
     }
     case "recall_memory": {
       if (!ctx.memory) return { facts: [], note: "Memory service is not running" };

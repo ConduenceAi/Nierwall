@@ -163,7 +163,7 @@ export async function fixesFor(watch: Watch, data: SnapshotWithDetail, wallets: 
   if (watch.kind !== "health_below" && watch.kind !== "liq_distance") return [];
   const positionId = String(p.positionId);
   if (!positionId.startsWith("rhea:")) return [];
-  const detail = data.rhea.get(positionId.slice(5));
+  const detail = data.rhea.get(positionId);
   if (!detail) return [];
   const threshold = watch.kind === "health_below" ? Number(p.threshold) : 1.3;
   // The repair target the user confirmed (the AI proposes it per loan); older watches without one aim 0.2 above the floor.

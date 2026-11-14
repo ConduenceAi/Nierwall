@@ -41,7 +41,7 @@ const WatchInput = z.object({
   kind: z.enum(["health_below", "price_below", "price_move", "liq_distance", "balance_min"]),
   params: z.record(z.string(), z.unknown()),
   confirm: z.boolean().default(false),
-  source: z.enum(["user", "memory", "demo", "system"]).default("user"),
+  source: z.enum(["user", "memory", "system"]).default("user"),
 });
 
 export function startApi(opts: ApiOptions) {

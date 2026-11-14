@@ -18,7 +18,24 @@ struct BrainStatus: Decodable, Equatable {
     let state: String // loading | ok | attention | degraded
 }
 
-/// Your wallets (with any Rhea loan found) and whether the demo accounts are on. Everything starts empty and off.
+/// The tokens in your wallets, one line per token and network, and what it all comes to.
+struct TokenView: Decodable, Equatable {
+    struct Token: Decodable, Equatable, Identifiable {
+        let symbol: String
+        let chain: String
+        let network: String
+        let amount: Double
+        let usd: Double?
+        var id: String { "\(chain):\(symbol)" }
+    }
+    let tokens: [Token]
+    /// Net worth: the tokens plus Rhea loans (collateral minus debt).
+    let totalUsd: Double
+    let loansUsd: Double?
+    let complete: Bool
+}
+
+/// Your wallets (with any Rhea loan found) and whether transaction safety is on. Everything starts empty and off.
 /// A wallet added by address is only read; one connected through its wallet app can also be sent transactions.
 struct Connections: Decodable, Equatable {
     struct Wallet: Decodable, Equatable, Identifiable {
@@ -29,15 +46,10 @@ struct Connections: Decodable, Equatable {
         /// The wallet app it was connected with ("Meteor", "MetaMask"); nil when it was added by address.
         let app: String?
         let connected: Bool
-        /// One of the demo portfolio's wallets: fixed amounts, nothing to remove or connect.
-        let demo: Bool?
         let rhea: Loan?
         var id: String { label }
-        var isDemo: Bool { demo ?? false }
     }
     let wallets: [Wallet]
-    let demo: Bool
-    let usingDemo: Bool
     let transactionSafety: Bool
 
     /// The first of these wallets that's only read, so nothing can be sent through it; nil when all are connected.
@@ -67,8 +79,21 @@ struct PositionCard: Decodable, Equatable, Identifiable {
     let liquidationDistance: Double?
     let collateralUsd: Double
     let debtUsd: Double
+    /// Collateral first, then deposits that don't back the loan. Missing from an older brain.
+    let supplied: [PositionToken]?
+    let borrowed: [PositionToken]?
     let observedAt: String
     let simulated: Bool
+}
+
+/// One token in a Rhea position: supplied (and whether it backs the loan) or borrowed.
+struct PositionToken: Decodable, Equatable {
+    let symbol: String
+    let amount: Double
+    let usd: Double
+    /// Yearly rate as a fraction.
+    let apr: Double?
+    let collateral: Bool
 }
 
 struct AlertCard: Decodable, Equatable {

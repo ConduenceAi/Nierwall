@@ -56,7 +56,7 @@ export const WalletSchema = z.object({
   role: z.string().default(""),
   /** EVM wallets: the networks to read (default: all of them). Each network's node sees the address it's asked about. */
   networks: z.array(z.enum(EVM_NETWORKS)).min(1).optional(),
-  /** The wallet app it was connected through ("meteor-wallet", "metamask"), "typed", or "demo" for the demo portfolio. */
+  /** The wallet app it was connected through ("meteor-wallet", "metamask"), or "typed". */
   via: z.string().optional(),
 });
 export type Wallet = z.infer<typeof WalletSchema>;

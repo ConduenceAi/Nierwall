@@ -1,6 +1,15 @@
 import type { Plan } from "../advisor/plans.js";
 import { networkName } from "../chains.js";
-import type { Alert, FixOption, LendingPosition, Watch } from "../types.js";
+import type { Alert, FixOption, LendingPosition, TokenAmount, Watch } from "../types.js";
+
+/** One token in a position card: what's supplied (and whether it backs the loan) or what's borrowed. */
+export interface CardToken {
+  symbol: string;
+  amount: number;
+  usd: number;
+  apr: number | null;
+  collateral: boolean;
+}
 
 /** Structured UI blocks rendered by the Mac app (and summarized as text for Telegram/CLI). */
 export type Card =
@@ -14,6 +23,9 @@ export type Card =
       liquidationDistance: number | null;
       collateralUsd: number;
       debtUsd: number;
+      /** Collateral first, then deposits that don't back the loan. */
+      supplied: CardToken[];
+      borrowed: CardToken[];
       observedAt: string;
       simulated: boolean;
     }
@@ -48,18 +60,22 @@ export interface Reply {
   via: "near-ai" | "fallback";
 }
 
+const cardToken = (t: TokenAmount, collateral: boolean): CardToken => ({ symbol: t.symbol, amount: t.amount, usd: t.usd, apr: t.apr ?? null, collateral });
+
 export function positionCard(p: LendingPosition, watches: Watch[]): Card {
   const floorWatch = watches.find((w) => w.kind === "health_below" && w.status === "active" && (w.params as any).positionId === p.id);
   return {
     type: "position",
     positionId: p.id,
-    title: "Rhea · NEAR",
+    title: p.positionKey && p.positionKey !== "REGULAR" ? `Rhea · ${p.positionKey.replace(/^shadow_ref_v1-(\d+)$/, "LP #$1")}` : "Rhea · NEAR",
     wallet: p.walletLabel,
     health: p.healthFactor,
     floor: floorWatch ? Number((floorWatch.params as any).threshold) : null,
     liquidationDistance: p.liquidationDistance,
     collateralUsd: p.collateralUsd,
     debtUsd: p.debtUsd,
+    supplied: [...p.collateral.map((t) => cardToken(t, true)), ...(p.supplied ?? []).map((t) => cardToken(t, false))],
+    borrowed: p.debt.map((t) => cardToken(t, false)),
     observedAt: p.observedAt,
     simulated: p.simulated,
   };

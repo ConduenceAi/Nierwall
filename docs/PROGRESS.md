@@ -6,11 +6,11 @@ Last updated: 2026-11-14 (afternoon, IST). Deadline: 2026-11-14 23:59 UTC. Judgi
 |---|-----------|--------|-------|
 | 1 | Repo scaffold, config templates | Done | pnpm workspace, `.env.example`, wallet template, MIT license |
 | 2 | Brain core: prices, Rhea reader | Done, live-tested | Rhea health matches the Rhea SDK exactly. Aave was supported until 2026-11-14, then taken out to keep the focus on NEAR |
-| 3 | Watch engine, scheduler, scenario mode, `pnpm demo`, `pnpm simulate` | Done, live-tested | 6 watch types; incidents open, escalate, remind, resolve, snooze; checks every 20 s near a limit, 60 s otherwise |
+| 3 | Watch engine, scheduler, scenario mode, `pnpm simulate` | Done, live-tested | 6 watch types; incidents open, escalate, remind, resolve, snooze; checks every 20 s near a limit, 60 s otherwise |
 | 4 | Local API + WebSocket, Telegram bot | API done, Telegram untested | Telegram needs `TELEGRAM_BOT_TOKEN`; link it from the app's "Get alerts on Telegram" button |
 | 5 | Memory service (Graphiti on embedded FalkorDB) | Done, live-tested | Extraction, search and the facts list checked with a real OpenAI key; facts are dated and the newest wins. Needs `OPENAI_API_KEY` |
 | 6 | NEAR AI agent | Done, live-tested | Setup, wallets, floors and planning answered live on NEAR AI, end to end encrypted, with TEE attestation for the gateway and both models; 14 tools, number check with one self-correction, seed-phrase tripwire, template fallback |
-| 7 | Fixes, NEAR Intents quotes, review and signing page | Done, signing untested | Live 1Click quotes with 5 checks; cash for a Rhea fix comes from whichever EVM network holds the most USDC; MetaMask is switched to each step's network. Signing needs your wallets (test with a tiny amount); blocked on demo accounts |
+| 7 | Fixes, NEAR Intents quotes, review and signing page | Done, signing untested | Live 1Click quotes with 5 checks; cash for a Rhea fix comes from whichever EVM network holds the most USDC; MetaMask is switched to each step's network. Signing needs your wallets connected (test with a tiny amount) |
 | 8 | MetaMask Snap (pre-sign checks) | Built, untested in MetaMask | Analysis tested with real calldata; needs MetaMask Flask in your browser |
 | 9 | Mac menu-bar app (Swift) | Built, launched | Press ⌘⌥ for the Siri-style orb (centered a fifth of the way down, no background, edge glow): a hands-free conversation where a pause sends, it answers and listens again, you can talk over it, and Esc or silence ends it. Turn-taking checked offline (`apps/mac/scripts/check.sh`); voice, echo cancellation, overlay and notifications still need you at the screen |
 | 10 | Always-on (launchd) + docs | Done | `pnpm always-on` installs it (you run it) |
@@ -26,11 +26,31 @@ Last updated: 2026-11-14 (afternoon, IST). Deadline: 2026-11-14 23:59 UTC. Judgi
 2. Add your wallets in the shield, and connect the ones Nierwall should send fixes to (NEAR wallet or MetaMask).
 3. Try the Snap in a MetaMask Flask browser profile.
 4. Try one real fix with a tiny amount.
-5. Try voice and notifications on the Mac, then record the demo (the demo portfolio's story is in the README).
+5. Try voice and notifications on the Mac, then record the video.
 6. Make the GitHub repo public before the deadline, then submit.
 
 ## Log
 
+- **2026-11-14 (late night)** The Conduence logo is Nierwall's logo: traced to a clean vector from the JPEG, it's
+  the landing page's favicon and header mark, sits at the top of the README, and is the Mac app's icon
+  (`apps/mac/Resources/AppIcon.icns`, added to the bundle). The menu bar keeps its shield and the Snap its icon.
+  The README was cut to what a judge needs: what it is, why, install, "do X, see Y", how it works, NEAR, privacy.
+
+- **2026-11-14 (night)** Rhea positions in full. The reader now asks Rhea's contract directly for every position of
+  a NEAR account, so every supplied and borrowed token is listed, each with its APR. Rhea keeps one health factor
+  per position: the main one, plus one for each LP token used as collateral, each now its own card. Deposits that
+  aren't collateral show as supplied but don't count toward health; they do count toward total worth. The shield's
+  card lists Supplied (collateral marked) and Borrowed separately, behind the eye button. Positions refresh by
+  themselves every minute (20 seconds near a limit), and a read that fails keeps the last one on screen instead of
+  dropping it. The orb now sees small amounts too (0.0001035 ZEC, not 0.00). Checked live on the Savings wallet:
+  0.5 wNEAR supplied as collateral, 0.0001035 ZEC and 0.0802 wNEAR borrowed, health 2.54. 71 offline and 3 live
+  brain tests pass.
+
+- **2026-11-14 (evening, later)** Everything is real now: the demo portfolio is gone (its Main wallets, rules, setting
+  and tests, the demo-accounts switch, and `pnpm demo`); rules it left behind are deleted when the brain starts. Rhea
+  positions moved from the chat into the wallets view, under Tokens, with dollar amounts behind the eye button too.
+  Checked live: pastyam4622.near (Savings) has one Rhea position, 0.5 wNEAR of collateral against 0.08 wNEAR,
+  health 3.51, and Nierwall reads it. 73 brain tests pass.
 - **2026-11-14 (evening)** Solana, read only, and a realistic demo. A Solana address can be added like any other:
   SOL and the tokens NEAR Intents lists there (USDC and others) are read from public Solana nodes and priced, SOL
   has its own slice in the portfolio mix, and NEAR Intents can send to a Solana wallet, but nothing is ever sent from
@@ -41,7 +61,14 @@ Last updated: 2026-11-14 (afternoon, IST). Deadline: 2026-11-14 23:59 UTC. Judgi
   transfers. `pnpm demo --portfolio` runs the story live; it matched those numbers. Asked on NEAR AI, the agent named both
   broken rules with their numbers and proposed a checked $11.50 buy that keeps both (56 s). The shield now shows just
   **Add wallet** (its fields open on click) and **Connect wallet**, each explained behind an (i), and its switches line
-  up. 76 brain tests pass.
+  up. While the demo is on it's all Nierwall shows: your own wallets are set aside (the AI had been mixing them up),
+  come back when it's off. For recording the demo it's always on for now (`DEMO_PORTFOLIO=1`, the default) and never
+  listed in the shield, which shows only your own wallets; `DEMO_PORTFOLIO=0` turns it off. The shield's Features
+  section is now **Tokens**: your own wallets' tokens (never the demo's) and total worth, read live even while the demo
+  runs, with an eye button that hides every amount; transaction safety is turned on by asking the orb. Then, for the
+  recording, the demo wallets became the "Main" NEAR, Base and Solana wallets, watched next to your own and listed in the
+  shield; the AI is no longer told they're a demo (checked live: it listed all four wallets and never said "demo"). Sending
+  stays off while `DEMO_PORTFOLIO=1`. 77 brain tests pass.
 - **2026-11-14 (late afternoon)** Watching and sending are now separate, from feedback. In the shield you type a
   wallet's address and a name to watch it (read-only: balances, loans, alerts). **Connect a wallet** opens the browser
   page, where you pick Meteor or any other NEAR wallet from NEAR Connect's list, or MetaMask for EVM networks; only a

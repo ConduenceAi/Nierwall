@@ -2,7 +2,7 @@ import { decodeFunctionData, formatUnits, hexToBytes, keccak256, parseAbi, toByt
 import { assetClass } from "../advisor/plans.js";
 import type { Brain } from "../brain.js";
 import { ADDRESSES } from "../config.js";
-import { readRhea, rheaAssets, tokenInfo } from "../protocols/rhea.js";
+import { readRheaMain, rheaAssets, rheaPositionId, tokenInfo } from "../protocols/rhea.js";
 import { tokenList, type TokenInfo } from "../tokens.js";
 import { verdict, type PendingDeposit, type SnapAnalysis, type SnapFinding, type SnapTxInput } from "./analyze.js";
 import { currentMix, effectFindings, type Change } from "./effects.js";
@@ -169,9 +169,10 @@ function safeJson(s: unknown): any {
 
 /** Rhea health before and after a list of lending actions, with Rhea's own weights. */
 async function rheaHealth(brain: Brain, label: string, account: string, actions: RheaAction[], sent: { tokenId: string; amount: number } | null) {
-  const [detail, assets] = await Promise.all([brain.last?.rhea.get(label) ?? readRhea(label, account, null), rheaAssets()]);
-  let col = detail.position.collateral.reduce((s, c) => s + c.usd * c.weight, 0);
-  let debt = detail.position.debt.reduce((s, d) => s + (d.weight > 0 ? d.usd / d.weight : d.usd), 0);
+  // Actions without a position key act on the main position.
+  const [detail, assets] = await Promise.all([brain.last?.rhea.get(rheaPositionId(label)) ?? readRheaMain(label, account, null), rheaAssets()]);
+  let col = detail?.position.collateral.reduce((s, c) => s + c.usd * c.weight, 0) ?? 0;
+  let debt = detail?.position.debt.reduce((s, d) => s + (d.weight > 0 ? d.usd / d.weight : d.usd), 0) ?? 0;
   const before = debt > 1e-9 ? col / debt : null;
   for (const action of actions) {
     const [kind, p] = Object.entries(action)[0] ?? [];
@@ -184,7 +185,7 @@ async function rheaHealth(brain: Brain, label: string, account: string, actions:
     if (kind === "Borrow") debt += t.vr > 0 ? usd / t.vr : usd;
     else if (kind === "Repay") debt = Math.max(0, debt - (t.vr > 0 ? usd / t.vr : usd));
     else if (kind === "IncreaseCollateral") col += usd * t.vr;
-    else if (kind === "DecreaseCollateral") col = Math.max(0, col - (raw ? usd : detail.position.collateral.find((c) => c.token === p.token_id)?.usd ?? 0) * t.vr);
+    else if (kind === "DecreaseCollateral") col = Math.max(0, col - (raw ? usd : detail?.position.collateral.find((c) => c.token === p.token_id)?.usd ?? 0) * t.vr);
   }
   return { before, after: debt > 1e-9 ? col / debt : null };
 }

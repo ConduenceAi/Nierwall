@@ -2,8 +2,7 @@ import type { Wallet, WalletsConfig } from "./config.js";
 import { allocationOf } from "./advisor/plans.js";
 import { readHoldings, type Holding } from "./holdings.js";
 import { logger } from "./log.js";
-import { DEMO_RHEA, isDemoWallet } from "./demo.js";
-import { fixedRhea, readRhea, type RheaAccountDetail } from "./protocols/rhea.js";
+import { readRhea, type RheaAccountDetail } from "./protocols/rhea.js";
 import { coinPrices } from "./sources/coins.js";
 import { fetchPrices } from "./sources/prices.js";
 import type { ScenarioState, Snapshot, WalletBalance } from "./types.js";
@@ -12,12 +11,14 @@ const log = logger("portfolio");
 
 export interface SnapshotWithDetail {
   snapshot: Snapshot;
-  /** Protocol detail kept in memory for fix previews; never persisted with addresses. */
+  /** Protocol detail by position id, kept in memory for fix previews; never persisted with addresses. */
   rhea: Map<string, RheaAccountDetail>;
 }
 
 export class Portfolio {
   private holdingsCache: { at: number; key: string; data: { holdings: Holding[]; errors: string[] } } | null = null;
+  /** Rhea positions from the last refresh, kept for a wallet whose next read fails so its loans don't vanish meanwhile. */
+  private lastRhea = new Map<string, RheaAccountDetail>();
 
   /** Reads the brain's wallets each time, so connecting or removing one takes effect on the next refresh. */
   constructor(private readonly config: () => WalletsConfig) {}
@@ -60,14 +61,15 @@ export class Portfolio {
     if (coinIds.length) {
       jobs.push(coinPrices(coinIds).then((c) => void (coins = c)).catch((e) => void errors.push(`coin prices: ${String(e).slice(0, 120)}`)));
     }
-    // Every NEAR wallet is checked for a Rhea loan; one with nothing on Rhea simply has no position.
+    // Every NEAR wallet is checked for Rhea positions; one with nothing on Rhea simply has none.
     for (const w of this.wallets.wallets.filter((x) => x.chain === "near")) {
-      const loan = isDemoWallet(w) ? (w.label === DEMO_RHEA.wallet ? fixedRhea(w.label, DEMO_RHEA, scenario) : null) : readRhea(w.label, w.address, scenario);
-      if (!loan) continue;
       jobs.push(
-        loan
-          .then((d) => void (d.position.collateral.length || d.position.debt.length ? rhea.set(w.label, d) : undefined))
-          .catch((e) => void errors.push(`rhea:${w.label}: ${String(e).slice(0, 120)}`)),
+        readRhea(w.label, w.address, scenario)
+          .then((ds) => ds.forEach((d) => rhea.set(d.position.id, d)))
+          .catch((e) => {
+            errors.push(`rhea:${w.label}: ${String(e).slice(0, 120)}`);
+            for (const [id, d] of this.lastRhea) if (d.position.walletLabel === w.label) rhea.set(id, d);
+          }),
       );
     }
 
@@ -92,6 +94,7 @@ export class Portfolio {
       errors,
       scenario,
     };
+    this.lastRhea = rhea;
     return { snapshot, rhea };
   }
 }

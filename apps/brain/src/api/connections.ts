@@ -1,31 +1,67 @@
 import type { Hono } from "hono";
 import { z } from "zod";
+import { allocationOf } from "../advisor/plans.js";
 import type { Brain } from "../brain.js";
-import { EVM_NETWORKS } from "../config.js";
+import { networkName } from "../chains.js";
+import { EVM_NETWORKS, type Wallet } from "../config.js";
 import { isConnected, walletAppName } from "../connections.js";
-import { isDemoWallet } from "../demo.js";
+import { readHoldings } from "../holdings.js";
+import { readRhea } from "../protocols/rhea.js";
+import { sumUsd } from "../protocols/risk.js";
 import { servePage } from "../sign/routes.js";
+import type { LendingPosition } from "../types.js";
 
 /**
- * The app's wallets view: your wallets (with any Rhea loan found), which of them are connected and can be sent
- * transactions, and what's turned on.
+ * The app's wallets view: every wallet Nierwall watches (with any Rhea loan found), which of them are connected and can
+ * be sent transactions, and whether transaction safety is on.
  */
+const cents = (usd: number) => Math.round(usd * 100) / 100;
+
 export function publicConnections(brain: Brain) {
   const positions = brain.latestSnapshot()?.positions ?? [];
-  const { demo, transactionSafety } = brain.connections;
-  // While the demo portfolio stands in for yours, its wallets are listed, marked as the demo.
+  const { transactionSafety } = brain.connections;
   return {
     wallets: brain.wallets.wallets.map((w) => {
       const loan = positions.find((p) => p.walletLabel === w.label);
       return {
-        label: w.label, chain: w.chain, address: w.address, app: walletAppName(w.via), connected: isConnected(w), demo: isDemoWallet(w), networks: w.networks ?? null,
-        rhea: loan ? { healthFactor: loan.healthFactor, collateralUsd: Math.round(loan.collateralUsd), debtUsd: Math.round(loan.debtUsd) } : null,
+        label: w.label, chain: w.chain, address: w.address, app: walletAppName(w.via), connected: isConnected(w), networks: w.networks ?? null,
+        rhea: loan ? { healthFactor: loan.healthFactor, collateralUsd: cents(loan.collateralUsd), debtUsd: cents(loan.debtUsd) } : null,
       };
     }),
-    demo,
-    usingDemo: brain.usingDemo,
     transactionSafety,
   };
+}
+
+/**
+ * The tokens in your wallets and what they're worth, for the app's Tokens view: at live prices (no simulated scenario),
+ * Rhea loans netted into the total. Read on request and cached for 2 minutes.
+ */
+let tokensCache: { at: number; key: string; body: unknown } | null = null;
+async function yourTokens(wallets: Wallet[]) {
+  const key = JSON.stringify(wallets.map((w) => [w.label, w.address, w.networks ?? null]));
+  if (tokensCache && tokensCache.key === key && Date.now() - tokensCache.at < 120_000) return tokensCache.body;
+  const [{ holdings, errors }, loans] = await Promise.all([
+    readHoldings(wallets, null),
+    Promise.all(wallets.filter((w) => w.chain === "near").map((w) => readRhea(w.label, w.address, null).then((ds) => ds.map((d) => d.position)).catch(() => null))),
+  ]);
+  const positions: LendingPosition[] = loans.flatMap((ps) => ps ?? []);
+  // One line per token and network, across your wallets, biggest first.
+  const byToken = new Map<string, { symbol: string; chain: string; network: string; amount: number; usd: number | null }>();
+  for (const h of holdings) {
+    const k = `${h.chain}:${h.symbol}`;
+    const t = byToken.get(k) ?? { symbol: h.symbol, chain: h.chain, network: networkName(h.chain), amount: 0, usd: 0 };
+    t.amount += h.amount;
+    t.usd = t.usd == null || h.usd == null ? null : t.usd + h.usd;
+    byToken.set(k, t);
+  }
+  const body = {
+    tokens: [...byToken.values()].sort((a, b) => (b.usd ?? 0) - (a.usd ?? 0)),
+    totalUsd: allocationOf(holdings, positions).netWorthUsd,
+    loansUsd: positions.length ? Math.round(positions.reduce((sum, p) => sum + p.collateralUsd + sumUsd(p.supplied ?? []) - p.debtUsd, 0)) : null,
+    complete: errors.length === 0,
+  };
+  tokensCache = { at: Date.now(), key, body };
+  return body;
 }
 
 /** A wallet typed into the app: watched by address, never sent anything. */
@@ -46,6 +82,14 @@ const ConnectedWallet = z.object({
 export function registerConnectionRoutes(app: Hono, brain: Brain) {
   app.get("/api/connections", (c) => c.json(publicConnections(brain)));
 
+  app.get("/api/tokens", async (c) => {
+    try {
+      return c.json(await yourTokens(brain.connections.wallets));
+    } catch (e) {
+      return c.json({ error: String(e instanceof Error ? e.message : e).slice(0, 200) }, 502);
+    }
+  });
+
   app.post("/api/wallets", async (c) => {
     try {
       const wallet = await brain.addWallet({ ...TypedWallet.parse(await c.req.json()), via: "typed" });
@@ -61,7 +105,7 @@ export function registerConnectionRoutes(app: Hono, brain: Brain) {
   });
 
   app.post("/api/settings", async (c) => {
-    brain.setFeatures(z.object({ demo: z.boolean().optional(), transactionSafety: z.boolean().optional() }).parse(await c.req.json()));
+    brain.setFeatures(z.object({ transactionSafety: z.boolean().optional() }).parse(await c.req.json()));
     return c.json(publicConnections(brain));
   });
 

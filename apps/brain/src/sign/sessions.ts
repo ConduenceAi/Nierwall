@@ -173,7 +173,6 @@ export class SignSessions {
   }
 
   private newSession(id: string, title: string, healthBefore: number | null, healthAfter: number | null): SignSession {
-    if (this.brain.usingDemo) throw new Error("This is the demo portfolio, so there's nothing to sign. Add and connect your own wallet in Nierwall to review and sign fixes.");
     return {
       token: randomBytes(18).toString("base64url"), fixId: id, title, createdAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),

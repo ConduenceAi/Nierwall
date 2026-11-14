@@ -5,7 +5,7 @@ import { llamaChange24h, llamaDailyPrices, llamaPrices } from "./defillama.js";
 const log = logger("coins");
 const BASE = "https://api.coingecko.com/api/v3";
 
-/** A free demo key raises CoinGecko's rate limit; without one the public limit applies. */
+/** A free CoinGecko key raises its rate limit; without one the public limit applies. */
 function headers(): Record<string, string> {
   return env.COINGECKO_API_KEY ? { "x-cg-demo-api-key": env.COINGECKO_API_KEY } : {};
 }

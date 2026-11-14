@@ -4,7 +4,7 @@ import type { ScenarioState, Symbol } from "./types.js";
 
 const KEY = "scenario";
 
-/** Scenario mode applies labeled price shocks to real positions so the demo doesn't wait for a crash. */
+/** Scenario mode applies labeled price shocks to real positions, so you can see an alert without waiting for a crash. */
 export class Scenario {
   constructor(private store: Store) {}
 

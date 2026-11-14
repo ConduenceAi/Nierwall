@@ -66,9 +66,7 @@ export async function analyzeTx(brain: Brain, input: SnapTxInput, pending: Pendi
   const data = (tx.data ?? "0x") as `0x${string}`;
   const ownWallets = brain.wallets.wallets.filter((w) => w.chain === "evm");
   const own = (addr: string) => ownWallets.find((w) => w.address.toLowerCase() === addr.toLowerCase());
-  // In the demo, whichever account MetaMask sends from stands in for the demo's EVM wallet, so the demo's rules apply.
-  const demoEvm = brain.usingDemo ? ownWallets[0]?.label ?? null : null;
-  const fromLabel = from ? own(from)?.label ?? demoEvm : null;
+  const fromLabel = from ? own(from)?.label ?? null : null;
 
   // ---- ERC-20 approve / transfer ----
   let what = "Contract call";

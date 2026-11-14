@@ -2,7 +2,6 @@ import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
 import { type EvmNetwork, type Wallet, type WalletsConfig } from "./config.js";
 import { ConnectLinks, defaultLabel, MAX_WALLETS, nearAccountExists, NO_CONNECTIONS, parseAddress, type Connections } from "./connections.js";
-import { DEMO_RULES, DEMO_WALLETS } from "./demo.js";
 import { logger } from "./log.js";
 import { DEFAULT_PREFS, fixesFor, type PlannerPrefs } from "./planner/fixes.js";
 import { Portfolio, type SnapshotWithDetail } from "./portfolio.js";
@@ -10,7 +9,7 @@ import { Scenario, scenarioLabel } from "./scenario.js";
 import { coinPrices, volatility } from "./sources/coins.js";
 import { Store } from "./store.js";
 import type { Alert, Incident, Severity, Snapshot } from "./types.js";
-import { combineSeverity, describeWatch, evaluate, isNearLimit, type Evaluation, type SeverityJudgment } from "./watches/engine.js";
+import { combineSeverity, evaluate, isNearLimit, type Evaluation, type SeverityJudgment } from "./watches/engine.js";
 
 export type { SeverityJudgment };
 
@@ -49,8 +48,10 @@ export class Brain extends EventEmitter {
 
   constructor(readonly store: Store) {
     super();
-    this.conn = { ...NO_CONNECTIONS, ...(store.kvGet<Connections>("connections") ?? {}) };
-    this.syncDemoRules();
+    const saved = store.kvGet<Partial<Connections>>("connections");
+    this.conn = { wallets: saved?.wallets ?? NO_CONNECTIONS.wallets, transactionSafety: saved?.transactionSafety ?? NO_CONNECTIONS.transactionSafety };
+    // Rules from the old demo portfolio go: every rule here is about your own wallets.
+    for (const w of store.listWatches().filter((x) => (x.source as string) === "demo")) store.deleteWatch(w.id);
     this.portfolio = new Portfolio(() => this.wallets);
     this.scenario = new Scenario(store);
     this.ensureSystemWatches();
@@ -62,15 +63,9 @@ export class Brain extends EventEmitter {
     return this.conn;
   }
 
-  /** The wallets Nierwall watches: yours, or the demo portfolio while you try it, or none. */
+  /** The wallets Nierwall watches: the ones you added. */
   get wallets(): WalletsConfig {
-    const { wallets, demo } = this.conn;
-    return { wallets: wallets.length ? wallets : demo ? DEMO_WALLETS : [] };
-  }
-
-  /** True while the demo portfolio stands in for yours: there's nothing to sign with it. */
-  get usingDemo(): boolean {
-    return !this.conn.wallets.length && this.conn.demo;
+    return { wallets: this.conn.wallets };
   }
 
   /**
@@ -82,7 +77,7 @@ export class Brain extends EventEmitter {
     const parsed = parseAddress(input.address);
     if ("error" in parsed) throw new Error(parsed.error);
     const via = input.via ?? "typed";
-    const taken = this.conn.wallets.map((w) => w.label);
+    const taken = this.wallets.wallets.map((w) => w.label);
     const existing = this.conn.wallets.find((w) => w.chain === parsed.chain && w.address.toLowerCase() === parsed.address.toLowerCase());
     if (existing) {
       if (via === "typed" || existing.via === via) return existing;
@@ -112,8 +107,8 @@ export class Brain extends EventEmitter {
     return true;
   }
 
-  /** Turns the demo accounts or transaction safety on or off. */
-  setFeatures(features: { demo?: boolean; transactionSafety?: boolean }): Connections {
+  /** Turns transaction safety on or off. */
+  setFeatures(features: { transactionSafety?: boolean }): Connections {
     this.conn = { ...this.conn, ...Object.fromEntries(Object.entries(features).filter(([, v]) => typeof v === "boolean")) };
     this.connectionsChanged();
     return this.conn;
@@ -124,16 +119,7 @@ export class Brain extends EventEmitter {
     return `http://127.0.0.1:${this.apiPort}/connect/${this.connectLinks.create()}`;
   }
 
-  /** The demo's own rules (a stablecoin minimum, a USDC reserve) exist only while the demo portfolio stands in for yours. */
-  private syncDemoRules() {
-    const rules = this.store.listWatches().filter((w) => w.source === "demo");
-    if (!this.usingDemo) return rules.forEach((w) => this.store.deleteWatch(w.id));
-    if (rules.length) return;
-    for (const r of DEMO_RULES) this.store.newWatch({ kind: r.kind, label: describeWatch(r.kind, r.params), params: r.params, source: "demo", status: "active" });
-  }
-
   private connectionsChanged() {
-    this.syncDemoRules();
     this.store.kvSet("connections", this.conn);
     this.portfolio.forgetHoldings();
     this.emit("connections", this.conn);
@@ -167,7 +153,11 @@ export class Brain extends EventEmitter {
     this.last = data;
     this.store.saveSnapshot(data.snapshot);
     this.emit("snapshot", data.snapshot);
-    const evaluations = this.store.listWatches("active").map((w) => evaluate(w, data.snapshot));
+    // A rule about one wallet only applies while that wallet is watched: one you removed is skipped.
+    const watched = new Set(this.wallets.wallets.map((w) => w.label));
+    const evaluations = this.store.listWatches("active")
+      .filter((w) => { const label = (w.params as Record<string, unknown>).walletLabel; return label == null || watched.has(String(label)); })
+      .map((w) => evaluate(w, data.snapshot));
     this.lastEvaluations = evaluations;
     this.nearLimit = evaluations.some(isNearLimit);
     const alerts: Alert[] = [];
@@ -325,7 +315,14 @@ export class Brain extends EventEmitter {
     if (this.timer) clearTimeout(this.timer);
   }
 
+  /**
+   * The last snapshot, with only the wallets you have now: a saved one from before a restart, or a wallet you just
+   * removed, never shows a loan or balance that isn't yours any more.
+   */
   latestSnapshot(): Snapshot | null {
-    return this.last?.snapshot ?? this.store.latestSnapshot();
+    const s = this.last?.snapshot ?? this.store.latestSnapshot();
+    if (!s) return null;
+    const watched = new Set(this.wallets.wallets.map((w) => w.label));
+    return { ...s, positions: s.positions.filter((p) => watched.has(p.walletLabel)), balances: s.balances.filter((x) => watched.has(x.walletLabel)) };
   }
 }

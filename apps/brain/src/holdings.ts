@@ -4,9 +4,8 @@ import { ADDRESSES, env, EVM_NETWORKS, type EvmNetwork, type Network, type Walle
 import { logger } from "./log.js";
 import { nearBalances } from "./protocols/rhea.js";
 import { riskClass } from "./protocols/risk.js";
-import { DEMO_BALANCES, isDemoWallet } from "./demo.js";
 import { applyShock } from "./sources/prices.js";
-import { findToken, tokenList, type TokenInfo } from "./tokens.js";
+import { tokenList, type TokenInfo } from "./tokens.js";
 import type { ScenarioState, Symbol } from "./types.js";
 
 const log = logger("holdings");
@@ -47,17 +46,9 @@ export async function readHoldings(wallets: Wallet[], scenario: ScenarioState | 
     holdings.push({ walletLabel: w.label, chain: token.chain, symbol: token.symbol, amount, usd: shocked.usd == null ? null : amount * shocked.usd, token, simulated: shocked.simulated });
   };
 
-  // The demo portfolio's amounts are fixed; only their prices are live.
-  for (const w of wallets.filter(isDemoWallet)) {
-    for (const b of DEMO_BALANCES[w.label] ?? []) {
-      const token = findToken(tokens, b.chain, b.symbol);
-      if (token) add(w, token, b.amount);
-    }
-  }
-
   // Each network is read on its own, so one slow node doesn't hold up the rest.
   await Promise.all(
-    wallets.filter((w) => !isDemoWallet(w)).flatMap((w) =>
+    wallets.flatMap((w) =>
       w.chain === "evm"
         ? (w.networks ?? EVM_NETWORKS).map((n) => readEvm(w, n, tokens, add).catch((e) => void errors.push(`holdings:${w.label}:${n}: ${String(e).slice(0, 120)}`)))
         : [(w.chain === "solana" ? readSolana : readNear)(w, tokens, add).catch((e) => void errors.push(`holdings:${w.label}: ${String(e).slice(0, 120)}`))],

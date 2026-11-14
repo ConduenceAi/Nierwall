@@ -92,7 +92,6 @@ struct PanelView: View {
                 Text(stateLine).font(.caption).foregroundStyle(stateColor)
             }
             Spacer()
-            attestationChip
             Button { ui.showChat.toggle() } label: {
                 Image(systemName: ui.showChat ? "wallet.bifold" : "bubble.left.and.bubble.right").font(.system(size: 13, weight: .medium))
             }
@@ -122,33 +121,17 @@ struct PanelView: View {
         switch brain.status?.state { case "attention": return Palette.warn; case "degraded": return Palette.warn; default: return .secondary }
     }
 
-    private var attestationChip: some View {
-        let verified = brain.status?.attestation.verified ?? false
-        return Text(verified ? "NEAR AI · TEE verified" : "Templates only")
-            .font(.system(size: 10, weight: .medium, design: .monospaced))
-            .padding(.horizontal, 7).padding(.vertical, 3)
-            .foregroundStyle(verified ? Palette.blue : .secondary)
-            .overlay(Capsule().strokeBorder(verified ? Palette.blue : .secondary.opacity(0.5)))
-            .help(brain.status?.attestation.detail ?? "")
-    }
-
     private var overview: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ForEach(brain.positions) { PositionCardView(card: $0) }
             if brain.connection != .connected {
                 Text("Start the brain with `pnpm brain`, then ask me anything.").font(.callout).foregroundStyle(.secondary)
-            } else if let c = brain.connections, c.wallets.isEmpty, !c.usingDemo {
+            } else if let c = brain.connections, c.wallets.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("No wallets yet").font(.headline)
                     Text("Add a wallet's address and Nierwall watches its balances and any Rhea loan. Or press ⌘⌥ and say \u{201C}help me set up\u{201D}.")
                         .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    HStack {
-                        Button("Add a wallet") { ui.showChat = false }.buttonStyle(.borderedProminent)
-                        Button("Try the demo") { Task { await brain.setFeature(demo: true) } }
-                    }.controlSize(.small)
+                    Button("Add a wallet") { ui.showChat = false }.buttonStyle(.borderedProminent).controlSize(.small)
                 }
-            } else if brain.positions.isEmpty {
-                Text("No Rhea loan in your wallets. Ask about your balances, or set a price watch.").font(.callout).foregroundStyle(.secondary)
             }
             Text("Try: “How's my Rhea loan?” · “What if NEAR drops 20%?” · “Ping me if Rhea goes under 1.5”")
                 .font(.caption).foregroundStyle(.tertiary)
@@ -231,12 +214,42 @@ struct CardView: View {
 }
 
 private let money: (Double) -> String = { v in
-    let f = NumberFormatter(); f.numberStyle = .currency; f.currencyCode = "USD"; f.maximumFractionDigits = 0
+    let f = NumberFormatter(); f.numberStyle = .currency; f.currencyCode = "USD"; f.maximumFractionDigits = abs(v) >= 100 ? 0 : 2
     return f.string(from: NSNumber(value: v)) ?? "$\(Int(v))"
 }
 
 struct PositionCardView: View {
     let card: PositionCard
+    /// Dollar amounts show as "**" (the health factor stays).
+    var hideAmounts = false
+    private func dollars(_ v: Double) -> String { hideAmounts ? "**" : money(v) }
+    private func amount(_ v: Double) -> String {
+        hideAmounts ? "**" : v.formatted(.number.precision(.significantDigits(1...(v >= 1 ? 6 : 4))).grouping(.automatic))
+    }
+
+    /// Supplied or borrowed tokens with their total, one line each.
+    @ViewBuilder private func tokens(_ title: String, _ items: [PositionToken]) -> some View {
+        if !items.isEmpty {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack {
+                    Text(title).font(.caption.weight(.semibold))
+                    Spacer()
+                    Text(dollars(items.reduce(0) { $0 + $1.usd })).font(.caption.weight(.semibold)).monospacedDigit()
+                }
+                ForEach(Array(items.enumerated()), id: \.offset) { _, t in
+                    HStack(alignment: .firstTextBaseline, spacing: 5) {
+                        Text(t.symbol).font(.caption)
+                        if title == "Supplied" { Text(t.collateral ? "collateral" : "not collateral").font(.caption2).foregroundStyle(.tertiary) }
+                        if let apr = t.apr { Text(String(format: "%.2f%% APR", apr * 100)).font(.caption2).foregroundStyle(.tertiary) }
+                        Spacer()
+                        Text(amount(t.amount)).font(.caption).monospacedDigit()
+                        Text(dollars(t.usd)).font(.caption2).foregroundStyle(.secondary).monospacedDigit().frame(minWidth: 52, alignment: .trailing)
+                    }
+                }
+            }
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -250,12 +263,20 @@ struct PositionCardView: View {
                 Text("health factor").font(.caption).foregroundStyle(.secondary)
             }
             if let h = card.health { HealthGauge(health: h, floor: card.floor) }
-            HStack {
-                Text("Collateral \(money(card.collateralUsd)) · Debt \(money(card.debtUsd))")
-                Spacer()
-                if let d = card.liquidationDistance { Text("liq. after −\(String(format: "%.1f", d * 100))%") }
+            if let supplied = card.supplied, let borrowed = card.borrowed {
+                tokens("Supplied", supplied)
+                tokens("Borrowed", borrowed)
+                if let d = card.liquidationDistance {
+                    Text("Liquidated if the main collateral falls \(String(format: "%.1f", d * 100))%").font(.caption2).foregroundStyle(.secondary)
+                }
+            } else {
+                HStack {
+                    Text("Collateral \(dollars(card.collateralUsd)) · Debt \(dollars(card.debtUsd))")
+                    Spacer()
+                    if let d = card.liquidationDistance { Text("liq. after −\(String(format: "%.1f", d * 100))%") }
+                }
+                .font(.caption2).foregroundStyle(.secondary)
             }
-            .font(.caption2).foregroundStyle(.secondary)
         }
         .padding(11)
         .background(Palette.card, in: RoundedRectangle(cornerRadius: 12))
@@ -338,6 +359,19 @@ struct FixCardView: View {
         .padding(11)
         .background(Palette.card, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Palette.rule))
+    }
+}
+
+/// White text in a thin white outline, on the panel's black.
+struct OutlineButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.callout.weight(.medium))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12).padding(.vertical, 5)
+            .background(Color.white.opacity(configuration.isPressed ? 0.15 : 0), in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.white, lineWidth: 1))
+            .contentShape(RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -440,6 +474,8 @@ struct ConnectionsView: View {
     @State private var showAdd = false
     @State private var adding = false
     @State private var addError: String?
+    /// Only token names, no amounts or values: for screen sharing.
+    @AppStorage("hideAmounts") private var hideAmounts = false
 
     var body: some View {
         let c = brain.connections
@@ -454,18 +490,9 @@ struct ConnectionsView: View {
             }
             addForm
             Divider()
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Features").font(.headline)
-                Toggle(isOn: Binding(get: { c?.transactionSafety ?? false }, set: { on in Task { await brain.setFeature(transactionSafety: on) } })) {
-                    feature("Transaction safety", "Checks every MetaMask transaction against your rules before you sign. Off until you turn it on.")
-                }
-                if c?.transactionSafety == true {
-                    Button("Install the Nierwall Snap in MetaMask Flask") { brain.openSnapInstall() }.buttonStyle(.link).font(.caption)
-                }
-                Toggle(isOn: Binding(get: { c?.demo ?? false }, set: { on in Task { await brain.setFeature(demo: on) } })) {
-                    feature("Demo portfolio", c?.wallets.contains { !$0.isDemo } == true ? "Your wallets are used, so the demo stays out." : "Small fixed amounts on NEAR, Base and Solana with a Rhea loan and two rules, to look around before adding yours.")
-                }
-            }
+            tokensSection
+            Divider()
+            rheaSection
             Divider()
             VStack(alignment: .leading, spacing: 6) {
                 Text("Services").font(.headline)
@@ -477,7 +504,76 @@ struct ConnectionsView: View {
             }
         }
         .toggleStyle(.switch)
-        .task { await brain.loadConnections() }
+        .task {
+            await brain.loadConnections()
+            // Prices move: refresh the tokens every minute while this is open.
+            while !Task.isCancelled {
+                await brain.loadTokens()
+                try? await Task.sleep(for: .seconds(60))
+            }
+        }
+        .onChange(of: brain.connections?.wallets.map(\.id)) { _, _ in Task { await brain.loadTokens() } }
+    }
+
+    /// Your own wallets' tokens and their total worth. The eye turns every number and value into "**".
+    private var tokensSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Tokens").font(.headline)
+                Spacer()
+                Button { hideAmounts.toggle() } label: { Image(systemName: hideAmounts ? "eye.slash" : "eye") }
+                    .buttonStyle(.plain).foregroundStyle(.secondary)
+                    .help(hideAmounts ? "Show amounts" : "Hide amounts")
+            }
+            if brain.connections?.wallets.isEmpty ?? true {
+                Text("Add a wallet to see its tokens.").font(.caption).foregroundStyle(.secondary)
+            } else if let t = brain.tokens {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Total worth").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Text(masked(usd(t.totalUsd))).font(.title3.weight(.semibold)).monospacedDigit()
+                }
+                if let loans = t.loansUsd {
+                    Text("Includes Rhea loans, \(masked(usd(loans))) net").font(.caption2).foregroundStyle(.tertiary)
+                }
+                ForEach(t.tokens) { token in
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(token.symbol).font(.callout.weight(.medium))
+                        Text(token.network).font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                        Text(masked(amount(token.amount))).font(.callout).monospacedDigit()
+                        Text(masked(token.usd.map(usd) ?? "–")).font(.caption).foregroundStyle(.secondary).monospacedDigit().frame(minWidth: 64, alignment: .trailing)
+                    }
+                }
+                if t.tokens.isEmpty { Text("No tokens found.").font(.caption).foregroundStyle(.secondary) }
+                if !t.complete { Text("Some networks didn't answer; this may be missing a few.").font(.caption2).foregroundStyle(.tertiary) }
+            } else {
+                ProgressView().controlSize(.small)
+            }
+        }
+    }
+
+    /// Your Rhea loans: health, how far from liquidation, and what's lent and borrowed (dollar amounts hide with the eye).
+    private var rheaSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Rhea positions").font(.headline)
+            if brain.positions.isEmpty {
+                Text(brain.connections?.wallets.contains { $0.chain == "near" } == true ? "No Rhea positions in your NEAR wallets." : "Add a NEAR wallet to see its Rhea positions.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            ForEach(brain.positions) { PositionCardView(card: $0, hideAmounts: hideAmounts) }
+        }
+    }
+
+    /// With amounts hidden, every number shows as "**".
+    private func masked(_ s: String) -> String { hideAmounts ? "**" : s }
+
+    private func usd(_ v: Double) -> String {
+        v.formatted(.currency(code: "USD").precision(.fractionLength(abs(v) >= 1000 ? 0 : 2)))
+    }
+
+    private func amount(_ v: Double) -> String {
+        v.formatted(.number.precision(.significantDigits(1...(v >= 1 ? 6 : 4))).grouping(.automatic))
     }
 
     /// Two ways to add a wallet, each explained behind its (i): watch one by its address (the fields open here), or
@@ -486,11 +582,11 @@ struct ConnectionsView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 14) {
                 HStack(spacing: 4) {
-                    Button("Add wallet") { showAdd.toggle(); addError = nil }
+                    Button("Add wallet") { showAdd.toggle(); addError = nil }.buttonStyle(OutlineButtonStyle())
                     InfoButton(text: "Watch a wallet by its address: a NEAR account, a 0x address or a Solana address. Nierwall reads its balances and loans and alerts you, but can't send it anything.")
                 }
                 HStack(spacing: 4) {
-                    Button("Connect wallet") { Task { _ = await brain.connectWallet() } }
+                    Button("Connect wallet") { Task { _ = await brain.connectWallet() } }.buttonStyle(OutlineButtonStyle())
                     InfoButton(text: "Opens your browser to connect Meteor or another NEAR wallet, or MetaMask for EVM networks. Then Nierwall can send it fixes and swaps for you to approve. It only gets the address, never your keys.")
                 }
             }
@@ -526,15 +622,13 @@ struct ConnectionsView: View {
             Image(systemName: w.chain == "near" ? "n.circle.fill" : w.chain == "solana" ? "s.circle.fill" : "e.circle.fill").foregroundStyle(w.connected ? Palette.blue : .secondary)
             VStack(alignment: .leading, spacing: 2) {
                 Text(w.label).font(.callout.weight(.semibold))
-                Text(w.isDemo ? "Demo portfolio · fixed amounts, live prices" : [short(w.address), w.chain == "evm" ? "every EVM network" : w.chain == "solana" ? "Solana" : nil].compactMap { $0 }.joined(separator: " · "))
+                Text([short(w.address), w.chain == "evm" ? "every EVM network" : w.chain == "solana" ? "Solana" : nil].compactMap { $0 }.joined(separator: " · "))
                     .font(.caption).foregroundStyle(.secondary)
-                if !w.isDemo {
-                    HStack(spacing: 6) {
-                        Text(w.connected ? "Connected · \(w.app ?? "wallet")" : "Read-only").font(.caption2.weight(.medium)).foregroundStyle(w.connected ? Palette.blue : .secondary)
-                        // Solana wallets are only read: there's nothing to connect them to.
-                        if !w.connected && w.chain != "solana" {
-                            Button("Connect to send") { Task { _ = await brain.connectWallet() } }.buttonStyle(.link).font(.caption2)
-                        }
+                HStack(spacing: 6) {
+                    Text(w.connected ? "Connected · \(w.app ?? "wallet")" : "Read-only").font(.caption2.weight(.medium)).foregroundStyle(w.connected ? Palette.blue : .secondary)
+                    // Solana wallets are only read: there's nothing to connect them to.
+                    if !w.connected && w.chain != "solana" {
+                        Button("Connect to send") { Task { _ = await brain.connectWallet() } }.buttonStyle(.link).font(.caption2)
                     }
                 }
                 if let loan = w.rhea {
@@ -542,10 +636,8 @@ struct ConnectionsView: View {
                 }
             }
             Spacer()
-            if !w.isDemo {
-                Button { Task { await brain.removeWallet(w.label) } } label: { Image(systemName: "xmark.circle") }
-                    .buttonStyle(.plain).foregroundStyle(.secondary).help("Stop watching \(w.label)")
-            }
+            Button { Task { await brain.removeWallet(w.label) } } label: { Image(systemName: "xmark.circle") }
+                .buttonStyle(.plain).foregroundStyle(.secondary).help("Stop watching \(w.label)")
         }
     }
 

@@ -8,20 +8,18 @@ import { env, type Wallet } from "./config.js";
  */
 export interface Connections {
   wallets: Wallet[];
-  /** The demo portfolio, to try Nierwall before adding a wallet. Ignored once one is added. */
-  demo: boolean;
   /** Answer the MetaMask Snap's checks before you sign. */
   transactionSafety: boolean;
 }
 
-export const NO_CONNECTIONS: Connections = { wallets: [], demo: false, transactionSafety: false };
+export const NO_CONNECTIONS: Connections = { wallets: [], transactionSafety: false };
 
 /**
  * A wallet connected through its wallet app (a NEAR wallet such as Meteor, or MetaMask for an EVM address) can be sent
  * transactions to approve. One added by address is only read.
  */
 export function isConnected(w: Wallet): boolean {
-  return !!w.via && !["typed", "config file", "demo"].includes(w.via);
+  return !!w.via && !["typed", "config file"].includes(w.via);
 }
 
 /** Why Nierwall can't send a transaction from this wallet, for the AI and the user; null when it can. */
@@ -93,7 +91,7 @@ const WALLET_APPS: Record<string, string> = {
 
 /** The wallet app a wallet was connected through, for people: "Meteor", "MetaMask". Null when it was added by address. */
 export function walletAppName(via: string | undefined): string | null {
-  if (!via || via === "typed" || via === "config file" || via === "demo") return null;
+  if (!via || via === "typed" || via === "config file") return null;
   return WALLET_APPS[via] ?? via;
 }
 

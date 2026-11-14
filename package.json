@@ -17,7 +17,6 @@
     "landing:build": "pnpm --filter @guardian/landing build",
     "brain": "pnpm --filter @guardian/brain start",
     "dev": "pnpm --filter @guardian/brain dev",
-    "demo": "pnpm --filter @guardian/brain demo",
     "simulate": "pnpm --filter @guardian/brain simulate",
     "test": "pnpm -r --if-present test",
     "typecheck": "pnpm -r --if-present typecheck",

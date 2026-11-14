@@ -24,6 +24,28 @@ final class FloatingPanel: NSPanel {
         super.resignKey()
         orderOut(nil)
     }
+
+    /// A menu-bar app has no Edit menu, which is what normally turns ⌘C, ⌘V, ⌘X, ⌘A and ⌘Z into actions, so the panel
+    /// sends them to the text field you're typing in.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        let key = event.charactersIgnoringModifiers?.lowercased()
+        var action: Selector?
+        if flags == .command {
+            switch key {
+            case "x": action = #selector(NSText.cut(_:))
+            case "c": action = #selector(NSText.copy(_:))
+            case "v": action = #selector(NSText.paste(_:))
+            case "a": action = #selector(NSResponder.selectAll(_:))
+            case "z": action = Selector(("undo:"))
+            default: break
+            }
+        } else if flags == [.command, .shift], key == "z" {
+            action = Selector(("redo:"))
+        }
+        if let action, NSApp.sendAction(action, to: nil, from: self) { return true }
+        return super.performKeyEquivalent(with: event)
+    }
 }
 
 @MainActor
@@ -67,11 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             snooze: { [weak self] id in Task { await self?.brain.snooze(id) } },
             linkTelegram: { [weak self] in Task { if let err = await self?.brain.linkTelegram() { self?.ui.notice = err } } },
             connectWallet: { [weak self] in Task { if let err = await self?.brain.connectWallet() { self?.ui.notice = err } } },
-            // The demo accounts are never sent anything; the review page says so.
-            readOnly: { [weak self] labels in
-                guard let c = self?.brain.connections, !c.usingDemo else { return nil }
-                return c.readOnly(among: labels)
-            }
+            readOnly: { [weak self] labels in self?.brain.connections?.readOnly(among: labels) }
         )
         panel = FloatingPanel(content: NSHostingView(rootView: PanelView(brain: brain, ui: ui, actions: actions)))
         overlay = OverlayController()
@@ -306,10 +324,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// The first thing in a reply you could send: a checked plan, or a fix that isn't hypothetical. Only when every
-    /// wallet that signs it is connected (never with the demo accounts), and named after their wallet apps, like
+    /// wallet that signs it is connected, and named after their wallet apps, like
     /// "Meteor" or "MetaMask and Meteor".
     private func sendable(_ cards: [Card]) -> Offer? {
-        guard let c = brain.connections, !c.wallets.isEmpty, !c.usingDemo else { return nil }
+        guard let c = brain.connections, !c.wallets.isEmpty else { return nil }
         for card in cards {
             switch card {
             case .plan(let p) where p.steps.contains(where: { !$0.manual }):

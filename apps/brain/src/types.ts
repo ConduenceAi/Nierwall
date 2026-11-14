@@ -19,16 +19,22 @@ export interface TokenAmount {
   usd: number;
   /** Collateral weight (Rhea's volatility ratio), 0..1. */
   weight: number;
+  /** Yearly rate Rhea pays on a deposit or charges on a loan, as a fraction. */
+  apr?: number;
 }
 
 export interface LendingPosition {
-  /** Stable id: "rhea:<wallet label>". */
+  /** Stable id: "rhea:<wallet label>" for the main position, "rhea:<wallet label>#<key>" for the others. */
   id: string;
   protocol: "rhea";
   chain: Network;
   walletLabel: string;
+  /** Rhea's position key: "REGULAR" for the main one; LP-token positions have their own, each with its own health. */
+  positionKey?: string;
   collateral: TokenAmount[];
   debt: TokenAmount[];
+  /** Deposits earning interest that aren't collateral, so they don't count toward health. */
+  supplied?: TokenAmount[];
   collateralUsd: number;
   debtUsd: number;
   /** Ratio, 1.00 = liquidation line. Null when there is no debt. */
@@ -84,7 +90,7 @@ export interface Watch {
   label: string;
   params: Record<string, unknown>;
   status: "proposed" | "active" | "paused";
-  source: "user" | "memory" | "demo" | "system";
+  source: "user" | "memory" | "system";
   createdAt: string;
   confirmedAt: string | null;
 }

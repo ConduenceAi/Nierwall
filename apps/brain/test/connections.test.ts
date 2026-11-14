@@ -23,26 +23,23 @@ describe("connections: addresses", () => {
 describe("connections: the brain starts empty", () => {
   const brain = () => new Brain(new Store(":memory:"));
 
-  it("watches nothing until a wallet is added; demo accounts only when turned on", () => {
+  it("watches nothing until a wallet is added, and transaction safety starts off", () => {
     const b = brain();
     expect(b.wallets.wallets).toEqual([]);
-    expect([b.connections.transactionSafety, b.connections.demo, b.usingDemo]).toEqual([false, false, false]);
-    b.setFeatures({ demo: true });
-    expect(b.usingDemo).toBe(true);
-    expect(b.wallets.wallets.map((w) => w.label)).toContain("Demo NEAR wallet");
+    expect(b.connections.transactionSafety).toBe(false);
+    b.setFeatures({ transactionSafety: true });
+    expect(b.connections.transactionSafety).toBe(true);
   });
 
-  it("adds a wallet once, under a free nickname, and your wallets replace the demo accounts", async () => {
+  it("adds a wallet once, under a free nickname, and removes it", async () => {
     const b = brain();
-    b.setFeatures({ demo: true });
     const w = await b.addWallet({ address: "0xabbea473fdde4409c6a1f0c7c527c1bda68e6c24", via: "typed" });
     expect([w.label, w.chain, w.via]).toEqual(["EVM wallet", "evm", "typed"]);
     expect((await b.addWallet({ address: "0xABBEa473fdDE4409C6A1F0c7C527C1bDa68E6C24" })).label).toBe("EVM wallet");
     expect(b.wallets.wallets.map((x) => x.label)).toEqual(["EVM wallet"]);
-    expect(b.usingDemo).toBe(false);
     await expect(b.addWallet({ address: "0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB", label: "evm wallet" })).rejects.toThrow("already have a wallet called");
     expect(b.removeWallet("EVM WALLET")).toBe(true);
-    expect(b.wallets.wallets.map((x) => x.label)).toContain("Demo NEAR wallet");
+    expect(b.wallets.wallets).toEqual([]);
   });
 
   it("reads a typed wallet; connecting it through its wallet app upgrades it, and only then can it send", async () => {
@@ -59,6 +56,17 @@ describe("connections: the brain starts empty", () => {
     vi.unstubAllGlobals();
     expect([isConnected(near), walletAppName(near.via)]).toEqual([true, "Meteor"]);
     expect([walletAppName("metamask"), walletAppName("hot-wallet"), walletAppName("typed")]).toEqual(["MetaMask", "HOT", null]);
+  });
+
+  it("never serves a saved loan or balance for a wallet you don't have", () => {
+    const store = new Store(":memory:");
+    store.saveSnapshot({
+      takenAt: "", prices: {}, coins: {}, errors: [], scenario: null,
+      positions: [{ id: "rhea:Old wallet", protocol: "rhea", chain: "near", walletLabel: "Old wallet", collateral: [], debt: [], collateralUsd: 40, debtUsd: 20, healthFactor: 1.38, liquidationDistance: null, observedAt: "", simulated: false }],
+      balances: [{ walletLabel: "Old wallet", chain: "near", symbol: "NEAR", amount: 7.5, usd: 25 }],
+    } as any);
+    const b = new Brain(store);
+    expect([b.latestSnapshot()!.positions, b.latestSnapshot()!.balances]).toEqual([[], []]);
   });
 
   it("checks that a NEAR account exists before adding it", async () => {

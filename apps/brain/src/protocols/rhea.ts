@@ -1,5 +1,5 @@
 import * as rhea from "@rhea-finance/cross-chain-sdk";
-import { env } from "../config.js";
+import { ADDRESSES, env } from "../config.js";
 import { applyShock } from "../sources/prices.js";
 import type { LendingPosition, ScenarioState, TokenAmount } from "../types.js";
 import { liquidationDrop, mainCollateralClass, riskClass, sumUsd, type Weighted } from "./risk.js";
@@ -13,8 +13,17 @@ interface RheaAssetView {
   config?: { volatility_ratio: number; extra_decimals: number; can_use_as_collateral?: boolean };
 }
 export type RheaAssets = Record<string, RheaAssetView>;
-interface RheaPortfolio {
-  positions?: Record<string, { collateral?: Record<string, { balance: string }>; borrowed?: Record<string, { balance: string }> }>;
+
+/** One token line in Rhea's account view; balances use Rhea's internal decimals. */
+interface RheaBalance {
+  token_id: string;
+  balance: string;
+  apr?: string;
+}
+/** What `get_account_all_positions` returns: deposits outside any position, and every position by key. */
+interface RheaAccountView {
+  supplied?: RheaBalance[];
+  positions?: Record<string, { collateral?: RheaBalance[]; borrowed?: RheaBalance[] }>;
 }
 
 let assetsCache: { at: number; assets: RheaAssets } | null = null;
@@ -30,7 +39,8 @@ export async function rheaAssets(): Promise<RheaAssets> {
 /** A Rhea token's symbol, internal decimals (token + extra), collateral weight and price. */
 export function tokenInfo(assets: RheaAssets, tokenId: string) {
   const a = assets[tokenId];
-  const symbol = a?.metadata?.symbol ?? tokenId.slice(0, 10);
+  const lp = tokenId.match(/^shadow_ref_v1-(\d+)$/);
+  const symbol = a?.metadata?.symbol ?? (lp ? `LP #${lp[1]}` : tokenId.slice(0, 10));
   const decimals = (a?.metadata?.decimals ?? 0) + (a?.config?.extra_decimals ?? 0);
   const vr = (a?.config?.volatility_ratio ?? 0) / 10_000;
   const usd = Number(a?.price?.usd ?? 0);
@@ -45,78 +55,106 @@ function toAmount(raw: string, decimals: number) {
   return Number(`${whole}.${frac || "0"}`);
 }
 
+/** A view call on Rhea's lending contract, straight from NEAR RPC. */
+async function rheaView<T>(method: string, args: Record<string, unknown>): Promise<T> {
+  const res = await fetch(env.NEAR_RPC_URL, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0", id: "1", method: "query",
+      params: { request_type: "call_function", finality: "final", account_id: ADDRESSES.near.rhea, method_name: method, args_base64: Buffer.from(JSON.stringify(args)).toString("base64") },
+    }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  const j = (await res.json()) as { result?: { result?: number[]; error?: string }; error?: unknown };
+  if (j.error || j.result?.error || !j.result?.result) throw new Error(`Rhea ${method}: ${JSON.stringify(j.error ?? j.result?.error ?? "no result").slice(0, 160)}`);
+  return JSON.parse(Buffer.from(j.result.result).toString()) as T;
+}
+
 export interface RheaAccountDetail {
   position: LendingPosition;
   /** Price, weight and symbol per token, after any scenario shock. */
   tokens: Record<string, { symbol: string; usd: number; vr: number }>;
-  /** Raw portfolio from the SDK, kept for cross-checks. */
-  portfolio: RheaPortfolio | undefined;
 }
 
-/** Reads the REGULAR Rhea lending position of a NEAR account. */
-export async function readRhea(walletLabel: string, accountId: string, scenario: ScenarioState | null): Promise<RheaAccountDetail> {
-  const [assets, portfolio] = await Promise.all([rheaAssets(), rhea.getAccountAllPositionsView(accountId) as Promise<RheaPortfolio | undefined>]);
-  return rheaDetail(walletLabel, assets, portfolio, scenario);
-}
+/** Rhea's main lending position; LP-token positions sit beside it, each with its own health. */
+export const REGULAR = "REGULAR";
 
 /**
- * A Rhea loan from fixed token amounts (by Rhea token id), with Rhea's live prices and weights: the demo portfolio's
- * loan, valued exactly like a real one.
+ * Every Rhea position of a NEAR account, one per position, each with its own health.
+ * Deposits that aren't collateral belong to no position; they're listed on the main one, where Rhea shows them.
+ * Reads the contract directly, so every supplied and borrowed token is there.
  */
-export async function fixedRhea(walletLabel: string, loan: { collateral: Record<string, number>; borrowed: Record<string, number> }, scenario: ScenarioState | null, assets?: RheaAssets): Promise<RheaAccountDetail> {
-  assets ??= await rheaAssets();
-  const raw = (amounts: Record<string, number>) =>
-    Object.fromEntries(Object.entries(amounts).map(([id, amount]) => [id, { balance: (BigInt(Math.round(amount * 1e6)) * 10n ** BigInt(tokenInfo(assets, id).decimals - 6)).toString() }]));
-  return rheaDetail(walletLabel, assets, { positions: { REGULAR: { collateral: raw(loan.collateral), borrowed: raw(loan.borrowed) } } }, scenario);
+export async function readRhea(walletLabel: string, accountId: string, scenario: ScenarioState | null): Promise<RheaAccountDetail[]> {
+  const [assets, view] = await Promise.all([rheaAssets(), rheaView<RheaAccountView | null>("get_account_all_positions", { account_id: accountId })]);
+  const positions = { ...view?.positions };
+  if (view?.supplied?.length && !positions[REGULAR]) positions[REGULAR] = {};
+  return Object.entries(positions)
+    .map(([key, p]) => rheaDetail(walletLabel, key, assets, p, key === REGULAR ? view?.supplied ?? [] : [], scenario))
+    .filter((d) => d.position.collateral.length || d.position.debt.length || d.position.supplied?.length)
+    .sort((a, b) => Number(b.position.positionKey === REGULAR) - Number(a.position.positionKey === REGULAR));
 }
 
+/** The main Rhea position of a NEAR account, if it has one. */
+export async function readRheaMain(walletLabel: string, accountId: string, scenario: ScenarioState | null): Promise<RheaAccountDetail | undefined> {
+  return (await readRhea(walletLabel, accountId, scenario)).find((d) => d.position.positionKey === REGULAR);
+}
+
+/** Position id: "rhea:<wallet>" for the main position, "rhea:<wallet>#<key>" for the others. */
+export const rheaPositionId = (walletLabel: string, key = REGULAR) => (key === REGULAR ? `rhea:${walletLabel}` : `rhea:${walletLabel}#${key}`);
+
 /** A position, its health and how far it is from liquidation, from Rhea's raw balances. */
-function rheaDetail(walletLabel: string, assets: RheaAssets, portfolio: RheaPortfolio | undefined, scenario: ScenarioState | null): RheaAccountDetail {
-  const regular = portfolio?.positions?.REGULAR;
+function rheaDetail(
+  walletLabel: string,
+  key: string,
+  assets: RheaAssets,
+  p: { collateral?: RheaBalance[]; borrowed?: RheaBalance[] },
+  supplied: RheaBalance[],
+  scenario: ScenarioState | null,
+): RheaAccountDetail {
   const tokens: RheaAccountDetail["tokens"] = {};
-  const collateral: TokenAmount[] = [];
-  const debt: TokenAmount[] = [];
   const wCol: Weighted[] = [];
   const wDebt: Weighted[] = [];
   let simulated = false;
 
-  const price = (tokenId: string) => {
-    const info = tokenInfo(assets, tokenId);
+  const line = (b: RheaBalance): TokenAmount & { cls: ReturnType<typeof riskClass> } => {
+    const info = tokenInfo(assets, b.token_id);
     const cls = riskClass(info.symbol);
     const shocked = cls === "ETH" || cls === "NEAR" ? applyShock(cls, info.usd, scenario) : { usd: info.usd, simulated: false };
     simulated ||= shocked.simulated;
-    tokens[tokenId] = { symbol: info.symbol, usd: shocked.usd, vr: info.vr };
-    return { ...info, usd: shocked.usd, cls };
+    tokens[b.token_id] = { symbol: info.symbol, usd: shocked.usd, vr: info.vr };
+    const amount = toAmount(b.balance, info.decimals);
+    const apr = b.apr != null ? Number(b.apr) : undefined;
+    return { token: b.token_id, symbol: info.symbol, amount, usd: amount * shocked.usd, weight: info.vr, ...(apr != null && Number.isFinite(apr) ? { apr } : {}), cls };
   };
+  const strip = ({ cls: _cls, ...t }: TokenAmount & { cls: unknown }): TokenAmount => t;
 
-  for (const [tokenId, v] of Object.entries(regular?.collateral ?? {})) {
-    const p = price(tokenId);
-    const amount = toAmount(v.balance, p.decimals);
-    const usd = amount * p.usd;
-    collateral.push({ token: tokenId, symbol: p.symbol, amount, usd, weight: p.vr });
-    wCol.push({ cls: p.cls, value: usd * p.vr });
-  }
-  for (const [tokenId, v] of Object.entries(regular?.borrowed ?? {})) {
-    const p = price(tokenId);
-    const amount = toAmount(v.balance, p.decimals);
-    const usd = amount * p.usd;
-    debt.push({ token: tokenId, symbol: p.symbol, amount, usd, weight: p.vr });
-    wDebt.push({ cls: p.cls, value: p.vr > 0 ? usd / p.vr : usd });
-  }
+  const collateral = (p.collateral ?? []).map((b) => {
+    const t = line(b);
+    wCol.push({ cls: t.cls, value: t.usd * t.weight });
+    return strip(t);
+  });
+  const debt = (p.borrowed ?? []).map((b) => {
+    const t = line(b);
+    wDebt.push({ cls: t.cls, value: t.weight > 0 ? t.usd / t.weight : t.usd });
+    return strip(t);
+  });
+  const deposits = supplied.map((b) => strip(line(b)));
 
   const weightedCol = wCol.reduce((s, c) => s + c.value, 0);
   const weightedDebt = wDebt.reduce((s, d) => s + d.value, 0);
   const main = mainCollateralClass(wCol);
   return {
     tokens,
-    portfolio,
     position: {
-      id: `rhea:${walletLabel}`,
+      id: rheaPositionId(walletLabel, key),
       protocol: "rhea",
       chain: "near",
       walletLabel,
+      positionKey: key,
       collateral,
       debt,
+      supplied: deposits,
       collateralUsd: sumUsd(collateral),
       debtUsd: sumUsd(debt),
       healthFactor: weightedDebt > 0 ? weightedCol / weightedDebt : null,

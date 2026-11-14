@@ -21,7 +21,7 @@ async function main() {
   const file = store.kvGet("connections") ? null : walletsFile();
   if (file) store.kvSet("connections", { ...NO_CONNECTIONS, wallets: file.wallets.map((w) => ({ ...w, via: w.via ?? "config file" })) });
   const brain = new Brain(store);
-  log.info("connections", { wallets: brain.connections.wallets.map((w) => w.label), demo: brain.connections.demo, transactionSafety: brain.connections.transactionSafety });
+  log.info("connections", { wallets: brain.connections.wallets.map((w) => w.label), transactionSafety: brain.connections.transactionSafety });
 
   // The NEAR AI agent replaces this once NEAR_AI_API_KEY is set (wired in ai/agent.ts).
   let assistant: Assistant = new FallbackAssistant(brain);

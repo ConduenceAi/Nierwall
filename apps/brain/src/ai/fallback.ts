@@ -15,8 +15,8 @@ export function fallbackReply(brain: Brain, text: string): Reply {
   const q = text.toLowerCase();
   if (!brain.wallets.wallets.length) {
     return {
-      text: "No wallets yet. In the Nierwall panel, type a wallet's address to watch it, or connect a NEAR wallet (Meteor or another) or MetaMask so Nierwall can also send it transactions to approve. Or turn on the demo accounts to look around.",
-      speak: "No wallets yet. Add one in the Nierwall panel, or try the demo accounts.",
+      text: "No wallets yet. In the Nierwall panel, type a wallet's address to watch it, or connect a NEAR wallet (Meteor or another) or MetaMask so Nierwall can also send it transactions to approve.",
+      speak: "No wallets yet. Add one in the Nierwall panel.",
       cards: [],
       via: "fallback",
     };
