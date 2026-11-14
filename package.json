@@ -13,6 +13,8 @@
     "node": ">=24"
   },
   "scripts": {
+    "landing": "pnpm --filter @guardian/landing dev",
+    "landing:build": "pnpm --filter @guardian/landing build",
     "brain": "pnpm --filter @guardian/brain start",
     "dev": "pnpm --filter @guardian/brain dev",
     "demo": "pnpm --filter @guardian/brain demo",
