@@ -146,43 +146,6 @@ keyboard permissions, so Nierwall never sees what you type.
 | Money moves | Between all of the above through NEAR Intents; Solana wallets only receive |
 | Snap checks | 17 EVM networks and NEAR |
 
-## How it works
-
-```mermaid
-flowchart LR
-  you([You])
-  subgraph mac [Your Mac]
-    app[Menu-bar app]
-    snap[MetaMask Snap]
-    brain[Brain<br/>runs 24/7]
-    mem[(Memory graph)]
-    review[Connect and sign page]
-  end
-  you -- talk or type --> app
-  you -- sign in MetaMask --> snap
-  app <--> brain
-  snap -- check this transaction --> brain
-  brain <--> mem
-  brain -- a fix to sign --> review
-  review -- you approve each step --> wallets([Your wallets])
-  brain <--> ai[NEAR AI Cloud<br/>private model in a TEE]
-  brain --> rhea[Rhea<br/>loans and prices]
-  brain --> intents[NEAR Intents<br/>swaps and cross-chain]
-  brain --> tg[Telegram<br/>alerts]
-  mem --> oai[OpenAI<br/>turns chats into facts]
-```
-
-| Path | Part | Built with |
-|------|------|------------|
-| `apps/brain` | Reads wallets and loans, runs watches, plans fixes, talks to the AI and Telegram, checks Snap transactions | TypeScript, Node 24 |
-| `apps/mac` | Menu-bar shield, voice orb, chat, notifications | Swift, SwiftUI, Apple SpeechAnalyzer |
-| `apps/sign` | Local page that connects wallets and hands each step of a fix to them | NEAR Connect, MetaMask (EIP-6963) |
-| `apps/snap` | Pre-sign checks inside MetaMask | MetaMask Snaps SDK |
-| `services/memory` | Your goals and limits as dated facts | Graphiti on embedded FalkorDB, FastAPI |
-| `apps/landing` | Landing page | Static HTML |
-
-Internal names still use the working name `guardian` (packages, env vars, `Sources/Guardian`).
-
 ## Your business stays your business
 
 - **No keys, ever.** Nierwall never asks for, stores or uses a seed phrase or private key. Your wallet signs.

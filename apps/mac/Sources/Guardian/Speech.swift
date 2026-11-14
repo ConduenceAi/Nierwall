@@ -373,10 +373,19 @@ final class VoiceSession: @unchecked Sendable {
 /// The orb's voice outside a conversation, for a last word like "I couldn't start listening."
 /// Used from the main thread only; delegate callbacks hop to the main queue.
 final class SpeechOutput: NSObject, AVSpeechSynthesizerDelegate, @unchecked Sendable {
-    /// The best installed English voice.
+    /// The voice named with `defaults write app.guardian.mac orbVoice "<name>"`, if it's installed; otherwise the most
+    /// natural English voice, American first. Premium voices download in System Settings → Accessibility → Spoken Content.
     static let voice: AVSpeechSynthesisVoice? = {
         let english = AVSpeechSynthesisVoice.speechVoices().filter { $0.language.hasPrefix("en") }
-        return english.first { $0.quality == .premium } ?? english.first { $0.quality == .enhanced } ?? AVSpeechSynthesisVoice(language: "en-US")
+        if let wanted = UserDefaults.standard.string(forKey: "orbVoice")?.lowercased(),
+           let chosen = english.first(where: { $0.name.lowercased() == wanted || $0.identifier.lowercased() == wanted }) {
+            return chosen
+        }
+        let accents = ["en-US", "en-GB", "en-AU", "en-IE", "en-ZA", "en-IN"]
+        let rank = { (v: AVSpeechSynthesisVoice) in
+            (v.quality == .premium ? 0 : v.quality == .enhanced ? 1 : 2, accents.firstIndex(of: v.language) ?? accents.count)
+        }
+        return english.min { rank($0) < rank($1) } ?? AVSpeechSynthesisVoice(language: "en-US")
     }()
 
     static func utterance(_ text: String) -> AVSpeechUtterance {
