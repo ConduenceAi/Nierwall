@@ -164,7 +164,7 @@ flowchart LR
 
 | | How Nierwall uses it |
 |---|---|
-| **NEAR AI Cloud** | Runs the assistant inside TEEs: `z-ai/glm-5.3-flash` for everyday chat and alert judgment, the larger `z-ai/glm-5.3` for planning. Nierwall verifies both attestations before sending anything, encrypts chats end to end, and verifies each reply's signature. The app shows "NEAR AI · TEE verified". |
+| **NEAR AI Cloud** | Runs the assistant inside TEEs: `z-ai/glm-5.3-flash` for everyday chat and alert judgment, the larger `deepseek-ai/DeepSeek-V4.1-Flash-1017` for planning. Nierwall verifies both attestations before sending anything, encrypts chats end to end, and verifies each reply's signature. The app shows "NEAR AI · TEE verified". |
 | **Rhea** | NEAR's lending protocol. Nierwall reads your Rhea loans and previews every fix with Rhea's own risk weights. |
 | **NEAR Intents** | Every swap and cross-chain move in a fix or plan (e.g. USDC from Arbitrum to NEAR, ETH → USDC on Base, NEAR → USDC), through the 1Click API, with Nierwall's own checks on every quote. Its token list sets which tokens Nierwall reads in your wallets, on all ten EVM networks it supports, and prices them. |
 | **NEAR Connect** | Opens your NEAR wallet to sign the NEAR side of a fix. |

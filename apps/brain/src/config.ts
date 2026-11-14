@@ -27,7 +27,7 @@ const Env = z.object({
   ONECLICK_JWT: z.string().default(""),
   COINGECKO_API_KEY: z.string().default(""),
   /** Stronger TEE model for planning questions (rebalancing, trades); everyday chat uses NEAR_AI_MODEL. */
-  NEAR_AI_PLANNER_MODEL: z.string().default("z-ai/glm-5.3"),
+  NEAR_AI_PLANNER_MODEL: z.string().default("deepseek-ai/DeepSeek-V4.1-Flash-1017"),
 });
 
 export const env = Env.parse(process.env);
