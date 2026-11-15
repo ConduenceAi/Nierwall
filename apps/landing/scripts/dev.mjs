@@ -8,6 +8,7 @@ const assets = new Map([
   ['/styles.css', ['styles.css', 'text/css; charset=utf-8']],
   ['/main.js', ['main.js', 'text/javascript; charset=utf-8']],
   ['/favicon.svg', ['favicon.svg', 'image/svg+xml']],
+  ['/logo.svg', ['logo.svg', 'image/svg+xml']],
 ]);
 const port = Number(process.env.PORT || 4310);
 const server = createServer(async (request, response) => {

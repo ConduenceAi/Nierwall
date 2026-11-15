@@ -2,14 +2,13 @@
 
 # Nierwall
 
-**A private DeFi assistant in your Mac's menu bar.** It watches your wallets and Rhea loans around the clock,
-warns you before a loan gets liquidated, prepares a fix you sign in your own wallet, and checks MetaMask
-transactions before you approve them. Hold **⌘⌥** anywhere and talk to it like Siri.
+**A private DeFi assistant in the Mac that you can talk to.** It learns how you invest: your goals, your limits,
+the rules you give it, and shapes every fix around them. Tell it what to watch, and it keeps watching, through every
+crash and every rally. Before you sign a transaction, it checks it against your rules. And when something goes
+wrong, it has the fix ready. Hold **⌘⌥** anywhere and talk to it like Siri. More at
+[nierwall.conduence.xyz](https://nierwall.conduence.xyz/).
 
 Built at NEAR HACKATHON · Tracks: Privacy & Private AI · AI Security & Defense · Open Innovation
-
-> Prices drop → Nierwall notices → your Mac and phone ping → you pick a fix → you sign it in your wallet →
-> Nierwall confirms it worked. It never holds a key and never signs anything. That part is always you.
 
 ```bash
 pnpm install && cp .env.example .env    # every key in .env is optional
@@ -45,7 +44,6 @@ follow-up. Press Esc, or just go quiet, and it slips away.
 
 Click it in the menu bar for your wallets (connected or read-only), every token on every chain with your total
 worth, and your Rhea loans with their health. Tap the eye and every number becomes `**`, handy on a screen share.
-(Addresses blurred for this screenshot.)
 
 <p align="center"><img src="docs/images/shield.png" width="480" alt="The Nierwall shield panel: wallets, tokens with amounts hidden, and a Rhea loan"></p>
 
