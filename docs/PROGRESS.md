@@ -1,6 +1,6 @@
 # Progress
 
-Last updated: 2026-11-14 (afternoon, IST). Deadline: 2026-11-14 23:59 UTC. Judging 16 Nov, results 18 Nov.
+Last updated: 2026-11-18 (IST). Deadline: 2026-11-14 23:59 UTC. Judging 16 Nov, results 18 Nov.
 
 | # | Component | Status | Notes |
 |---|-----------|--------|-------|
@@ -8,7 +8,7 @@ Last updated: 2026-11-14 (afternoon, IST). Deadline: 2026-11-14 23:59 UTC. Judgi
 | 2 | Brain core: prices, Rhea reader | Done, live-tested | Rhea health matches the Rhea SDK exactly. Aave was supported until 2026-11-14, then taken out to keep the focus on NEAR |
 | 3 | Watch engine, scheduler, scenario mode, `pnpm simulate` | Done, live-tested | 6 watch types; incidents open, escalate, remind, resolve, snooze; checks every 20 s near a limit, 60 s otherwise |
 | 4 | Local API + WebSocket, Telegram bot | API done, Telegram untested | Telegram needs `TELEGRAM_BOT_TOKEN`; link it from the app's "Get alerts on Telegram" button |
-| 5 | Memory service (Graphiti on embedded FalkorDB) | Done, live-tested | Extraction, search and the facts list checked with a real OpenAI key; facts are dated and the newest wins. Needs `OPENAI_API_KEY` |
+| 5 | Memory service (Graphiti on embedded FalkorDB) | Done, live-tested | Facts pulled out by the NEAR AI chat model through the brain (TEE, end to end encrypted), embeddings made on the Mac; facts are dated and the newest wins. Needs `NEAR_AI_API_KEY`, no other key |
 | 6 | NEAR AI agent | Done, live-tested | Setup, wallets, floors and planning answered live on NEAR AI, end to end encrypted, with TEE attestation for the gateway and both models; 14 tools, number check with one self-correction, seed-phrase tripwire, template fallback |
 | 7 | Fixes, NEAR Intents quotes, review and signing page | Done, signing untested | Live 1Click quotes with 5 checks; cash for a Rhea fix comes from whichever EVM network holds the most USDC; MetaMask is switched to each step's network. Signing needs your wallets connected (test with a tiny amount) |
 | 8 | MetaMask Snap (pre-sign checks) | Built, untested in MetaMask | Analysis tested with real calldata; needs MetaMask Flask in your browser |
@@ -21,7 +21,7 @@ Last updated: 2026-11-14 (afternoon, IST). Deadline: 2026-11-14 23:59 UTC. Judgi
 
 ## Before submitting
 
-1. Put `NEAR_AI_API_KEY`, `OPENAI_API_KEY` and `TELEGRAM_BOT_TOKEN` in `.env` (never in the repo), then test chat,
+1. Put `NEAR_AI_API_KEY` and `TELEGRAM_BOT_TOKEN` in `.env` (never in the repo), then test chat,
    memory and Telegram.
 2. Add your wallets in the shield, and connect the ones Nierwall should send fixes to (NEAR wallet or MetaMask).
 3. Try the Snap in a MetaMask Flask browser profile.
@@ -30,6 +30,16 @@ Last updated: 2026-11-14 (afternoon, IST). Deadline: 2026-11-14 23:59 UTC. Judgi
 6. Make the GitHub repo public before the deadline, then submit.
 
 ## Log
+
+- **2026-11-18** Memory is off OpenAI. Graphiti's model calls now go to the brain's local API, which passes them to
+  the same verified NEAR AI chat model as the chat (`z-ai/glm-5.3-flash`), encrypted end to end, with addresses
+  stripped a second time on the way. If attestation isn't verified, memory waits instead of using anything else.
+  Embeddings come from `BAAI/bge-small-en-v1.5` running on the Mac (fastembed), downloaded once without logging in,
+  and a graph built with OpenAI's embeddings is re-embedded on the first start, keeping every fact. Memory needs no
+  key of its own now; an `OPENAI_API_KEY` left in `.env` is ignored. Checked live on a copy of the real memory: 16
+  entities and 5 facts re-embedded, one message became 4 facts in 11 NEAR AI calls (about 2 to 17 s each), and
+  search found them. One fix came out of it: shown a JSON schema, GLM once answered in the schema's shape
+  (`{"properties": {...}}`), which FalkorDB refused, so answers now keep only the fields asked for. 78 brain tests.
 
 - **2026-11-14 (late night)** The Conduence logo is Nierwall's logo: traced to a clean vector from the JPEG, it's
   the landing page's favicon and header mark, sits at the top of the README, and is the Mac app's icon

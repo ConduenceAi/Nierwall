@@ -6,6 +6,7 @@ import { registerConnectionRoutes, publicConnections } from "./api/connections.j
 import { env, walletsFile } from "./config.js";
 import { NO_CONNECTIONS } from "./connections.js";
 import { logger } from "./log.js";
+import { registerMemoryLlmRoutes, type MemoryModel } from "./memory/llm.js";
 import { writeRuntimeInfo } from "./runtime.js";
 import { Store } from "./store.js";
 import { TelegramBot } from "./telegram/bot.js";
@@ -25,9 +26,12 @@ async function main() {
 
   // The NEAR AI agent replaces this once NEAR_AI_API_KEY is set (wired in ai/agent.ts).
   let assistant: Assistant = new FallbackAssistant(brain);
+  // The same NEAR AI model pulls facts out for the memory service, so memory needs no AI service of its own.
+  let memoryModel: MemoryModel | null = null;
   try {
     const { createAssistant } = await import("./ai/agent.js");
-    assistant = (await createAssistant(brain)) ?? assistant;
+    const agent = await createAssistant(brain);
+    if (agent) assistant = memoryModel = agent;
   } catch (e) {
     log.warn("NEAR AI agent unavailable, using deterministic answers", { err: String(e).slice(0, 160) });
   }
@@ -40,6 +44,7 @@ async function main() {
   extend.push((app) => registerSignRoutes(app, brain, sessions, runtime.port));
   extend.push((app) => registerConnectionRoutes(app, brain));
   extend.push((app) => registerSnapRoutes(app, brain, () => sessions.pendingDeposits()));
+  extend.push((app) => registerMemoryLlmRoutes(app, memoryModel));
   const telegram = TelegramBot.fromEnv(brain, assistant, (alertId) => {
     if (!api || api.clientCount() === 0) return false;
     api.broadcast({ type: "review", alertId });

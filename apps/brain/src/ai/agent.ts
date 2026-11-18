@@ -3,6 +3,7 @@ import type { Brain, SeverityJudgment } from "../brain.js";
 import { env } from "../config.js";
 import { logger } from "../log.js";
 import { MemoryClient } from "../memory/client.js";
+import type { MemoryCompletion, MemoryModel } from "../memory/llm.js";
 import type { Assistant, Channel } from "./assistant.js";
 import type { Card, Reply } from "./cards.js";
 import { fallbackReply } from "./fallback.js";
@@ -55,7 +56,7 @@ export interface AgentAttestation {
  * Assistant backed by NEAR AI Cloud. The SDK verifies the gateway's and the model's TEE attestation before
  * any prompt is sent, encrypts the chat end to end, and lets us verify each reply's signature.
  */
-export class NearAgent implements Assistant {
+export class NearAgent implements Assistant, MemoryModel {
   private client: InferenceClient;
   private history = new Map<Channel, Msg[]>();
   private att: AgentAttestation;
@@ -124,6 +125,25 @@ export class NearAgent implements Assistant {
     const j = JSON.parse(raw) as { severity?: string; reason?: string };
     if (j.severity !== "warning" && j.severity !== "critical") return null;
     return { severity: j.severity, reason: String(j.reason ?? "").replace(/\s+/g, " ").trim().slice(0, 200) };
+  }
+
+  /**
+   * For the memory service: one completion on the chat model, with no tools and little hidden reasoning, encrypted
+   * end to end like the chat. Null while attestation isn't verified, so memory never reaches an unverified model.
+   */
+  async memoryCompletion(req: MemoryCompletion) {
+    if (!this.att.verified && Date.now() - this.lastVerifyAttempt > 5 * 60_000) await this.verify();
+    if (!this.att.verified) return null;
+    const completion: any = await this.client.chat.completions.create({
+      model: this.model,
+      messages: req.messages as any,
+      temperature: req.temperature,
+      max_tokens: req.maxTokens,
+      reasoning_effort: "low",
+      ...(req.json ? { response_format: { type: "json_object" } } : {}),
+    } as any);
+    const choice = completion.choices?.[0];
+    return { id: completion.id ?? null, model: this.model, content: String(choice?.message?.content ?? ""), finishReason: choice?.finish_reason ?? null };
   }
 
   async reply(text: string, channel: Channel): Promise<Reply> {
@@ -263,7 +283,7 @@ function dedupeCards(cards: Card[]): Card[] {
   });
 }
 
-export async function createAssistant(brain: Brain): Promise<Assistant | null> {
+export async function createAssistant(brain: Brain): Promise<NearAgent | null> {
   if (!env.NEAR_AI_API_KEY) return null;
   const memory = new MemoryClient();
   const memOk = await memory.health();

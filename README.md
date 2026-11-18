@@ -59,12 +59,14 @@ pnpm memory:setup && pnpm memory   # memory service, in a second terminal
 pnpm always-on                     # start everything at login, restart anything that crashes
 ```
 
+The first time memory starts, it downloads a small embedding model (about 70 MB) from Hugging Face, without
+logging in. After that it runs offline.
+
 Every key is optional. Nierwall still runs without them, just with fewer tricks:
 
 | Key in `.env` | Unlocks | Without it |
 |---------------|---------|------------|
-| `NEAR_AI_API_KEY` | Real conversation, plans and alert judgment on NEAR AI Cloud | Short built-in answers from computed numbers |
-| `OPENAI_API_KEY` | Memory of your goals and limits | A goldfish: nothing is remembered |
+| `NEAR_AI_API_KEY` | Real conversation, plans, alert judgment and memory of your goals and limits, all on NEAR AI Cloud | Short built-in answers from computed numbers, and a goldfish: nothing is remembered |
 | `TELEGRAM_BOT_TOKEN` | Alerts on your phone (bot from @BotFather) | Alerts on the Mac only |
 | `COINGECKO_API_KEY` | A higher limit for finding coins by name | The public limit; prices come from DefiLlama, no key |
 
@@ -125,7 +127,8 @@ keyboard permissions, so Nierwall never sees what you type.
 
 - **NEAR AI Cloud** is the brain's brain. Chat and alert judgment run on `z-ai/glm-5.3-flash` and plans on
   `deepseek-ai/DeepSeek-V4.1-Flash-1017`, both inside TEEs. Nierwall checks each model's attestation before the first
-  question, encrypts the chat end to end, and verifies every reply's signature.
+  question, encrypts the chat end to end, and verifies every reply's signature. The chat model also turns what you
+  say into memory facts for Graphiti, over the same encrypted channel, and memory search runs on your Mac.
 - **NEAR Intents** moves the money. Every swap and cross-chain hop goes through its 1Click API, like USDC from
   Arbitrum to NEAR to repay a loan. Before you see a quote, Nierwall checks it pays your own account, matches the
   route and amount, stays within slippage and leaves time to send. Its token list also decides which tokens get read
@@ -134,8 +137,7 @@ keyboard permissions, so Nierwall never sees what you type.
   previews each fix with Rhea's own risk weights.
 - **NEAR Connect** brings the wallets: Meteor, HOT, Intear, MyNearWallet and more, for connecting and signing.
 - **And the friends:** MetaMask signs on EVM networks and hosts the Snap, Telegram carries alerts to your phone,
-  OpenAI turns chats into memory facts through Graphiti (nicknames only, never addresses), and DefiLlama and
-  CoinGecko supply prices.
+  and DefiLlama and CoinGecko supply prices.
 
 | Chains | |
 |---|---|
@@ -147,7 +149,8 @@ keyboard permissions, so Nierwall never sees what you type.
 ## Your business stays your business
 
 - **No keys, ever.** Nierwall never asks for, stores or uses a seed phrase or private key. Your wallet signs.
-- **Private AI.** The model runs in a TEE on NEAR AI Cloud, verified before use.
+- **Private AI.** The models run in TEEs on NEAR AI Cloud, verified before use. That includes building your memory:
+  no other AI service ever sees what you say.
 - **The AI shows its work.** Every number in an AI answer must match what Nierwall computed, or you get the computed
   answer instead. Health math, the 1.05 hard stop for plans and the own-wallets rule live in code the AI can't touch.
 - **Addresses stay out of memory.** They become "[address]" before any text reaches the memory service.
@@ -158,12 +161,12 @@ keyboard permissions, so Nierwall never sees what you type.
 
 | Where | What |
 |-------|------|
-| NEAR AI Cloud (TEE) | Your messages and the position data used to answer them, with wallet nicknames, not addresses |
-| OpenAI | Text for memory, with nicknames, never addresses |
+| NEAR AI Cloud (TEE) | Your messages and the position data used to answer them, and your words again to pull out memory facts, with wallet nicknames, not addresses |
 | Telegram | Alert text, at the detail level in `TELEGRAM_DETAIL` |
 | Public nodes (publicnode.com, drpc.org, mainnet.base.org, Solana mainnet-beta, FastNEAR) | Wallet addresses, to read balances and loans; transactions the Snap simulates. `RPC_URL_<chain id>` and `SOLANA_RPC_URL` use your own node first |
 | DefiLlama, CoinGecko | Coin ids and token contracts for prices; never wallet addresses |
 | NEAR Intents | Price checks use stand-in addresses; real ones only when you open a fix to sign |
+| Hugging Face | Nothing of yours: the memory's embedding model is downloaded once, without logging in |
 
 Your wallet list, memory graph, history and voice audio stay on the Mac.
 
@@ -179,14 +182,14 @@ Your wallet list, memory graph, history and voice audio stay on the Mac.
 
 ## Tests
 
-`pnpm test` runs 74 brain tests, 3 of them against mainnet (`OFFLINE=1 pnpm test` skips those).
+`pnpm test` runs 78 brain tests, 3 of them against mainnet (`OFFLINE=1 pnpm test` skips those).
 `apps/mac/scripts/check.sh` checks the voice turn-taking. The day-by-day log is in [docs/PROGRESS.md](docs/PROGRESS.md).
 
 ## Libraries and AI disclosure
 
 Built during the hackathon, starting 12 Nov 2026, with no code from before it. Most of the code was written by
 Claude Code under the team's direction. Main libraries: `@rhea-finance/cross-chain-sdk`, `@nearai/inference-sdk`,
-`@hot-labs/near-connect`, `viem`, `hono`, `zod`, `@metamask/snaps-sdk`, `graphiti-core`, `falkordblite`, `fastapi`.
+`@hot-labs/near-connect`, `viem`, `hono`, `zod`, `@metamask/snaps-sdk`, `graphiti-core`, `falkordblite`, `fastembed`, `fastapi`.
 
 ## License
 
